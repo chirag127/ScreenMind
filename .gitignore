@@ -25,6 +25,7 @@ env/
 # ScreenMind Data (user-specific, never commit)
 data/
 screenshots/
+!docs/screenshots/
 *.db
 *.db-wal
 *.db-shm
