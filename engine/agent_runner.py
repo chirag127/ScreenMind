@@ -296,7 +296,7 @@ def _run_markdown_agent(agent: dict) -> str:
     model_req = agent.get("_model_req", 0)
 
     # Adaptive budget based on model context window
-    ctx_window = settings.context_window if hasattr(settings, 'context_window') else 6144
+    ctx_window = settings.context_window
     available_tokens = ctx_window - 800 - 1000  # reserve for system + output
     budget = min(max(available_tokens * 4, 800), 12000)  # chars, floor 800, cap 12k
 
