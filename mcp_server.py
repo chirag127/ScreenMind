@@ -117,6 +117,8 @@ def search_screen(query: str, limit: int = 10) -> str:
 
     # 2. FTS5 keyword fallback
     try:
+        # Escape FTS5 special characters by wrapping in double quotes
+        fts_query = '"' + query.replace('"', '""') + '"'
         fts_rows = conn.execute(
             """
             SELECT a.id, a.timestamp, a.app_name, a.category, a.summary,
@@ -127,7 +129,7 @@ def search_screen(query: str, limit: int = 10) -> str:
             ORDER BY rank
             LIMIT ?
             """,
-            (query, limit),
+            (fts_query, limit),
         ).fetchall()
 
         for row in fts_rows:
@@ -218,6 +220,17 @@ def get_activity_by_time(
         start_hour: Optional start hour (0-23) to filter by time range
         end_hour: Optional end hour (0-23) to filter by time range
     """
+    # Validate date format
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        return json.dumps({"error": f"Invalid date format '{date_str}'. Use YYYY-MM-DD (e.g. '2026-05-15')."})
+
+    if start_hour is not None and not (0 <= start_hour <= 23):
+        return json.dumps({"error": "start_hour must be 0-23"})
+    if end_hour is not None and not (0 <= end_hour <= 23):
+        return json.dumps({"error": "end_hour must be 0-23"})
+
     conn = db._get_conn()
 
     where = "analyzed = 1 AND DATE(timestamp) = ?"
@@ -296,7 +309,7 @@ def get_daily_summary(date_str: Optional[str] = None) -> str:
         "date": date_str,
         "summary": summary_data.get("summary", ""),
         "standup": summary_data.get("standup", ""),
-        "generated_at": summary_data.get("generated_at", ""),
+        "created_at": summary_data.get("created_at", ""),
     }, indent=2)
 
 
@@ -312,7 +325,7 @@ def capture_now() -> str:
 
     try:
         req = urllib.request.Request(
-            "http://localhost:7777/api/capture/bookmark",
+            f"http://localhost:{settings.api_port}/api/capture/bookmark",
             method="POST",
             headers={"Content-Type": "application/json"},
         )
@@ -333,7 +346,9 @@ def get_stats() -> str:
     Get overall statistics about the user's screen history.
     Use this to understand how much data is available and what the user has been doing.
     """
-    stats = db.get_stats()
+    today = date.today().isoformat()
+    week_ago = (date.today() - timedelta(days=7)).isoformat()
+    stats = db.get_stats(date_from=week_ago, date_to=today)
     return json.dumps(stats, indent=2)
 
 
@@ -350,16 +365,18 @@ def search_audio(query: str, limit: int = 10) -> str:
     conn = db._get_conn()
 
     try:
+        # Escape LIKE wildcards in user query
+        escaped = query.replace("%", "\\%").replace("_", "\\_")
         rows = conn.execute(
             """
             SELECT id, start_time, end_time, app_name, duration_minutes,
                    transcript, summary
             FROM meetings
-            WHERE transcript LIKE ? OR summary LIKE ?
+            WHERE transcript LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\'
             ORDER BY start_time DESC
             LIMIT ?
             """,
-            (f"%{query}%", f"%{query}%", limit),
+            (f"%{escaped}%", f"%{escaped}%", limit),
         ).fetchall()
     except Exception:
         return json.dumps({"message": "Meetings table not available.", "count": 0})
@@ -415,9 +432,16 @@ def get_screenshot(activity_id: int) -> str:
     if not row or not row["screenshot_path"]:
         return json.dumps({"error": f"No screenshot found for activity {activity_id}."})
 
-    filepath = Path(row["screenshot_path"])
+    filepath = Path(row["screenshot_path"]).resolve()
+
+    # Validate path is within the screenshots directory
+    try:
+        filepath.relative_to(settings.screenshots_dir.resolve())
+    except ValueError:
+        return json.dumps({"error": f"Screenshot path is outside the data directory."})
+
     if not filepath.exists():
-        return json.dumps({"error": f"Screenshot file missing: {filepath}"})
+        return json.dumps({"error": f"Screenshot file missing for activity {activity_id}."})
 
     return json.dumps({
         "activity_id": activity_id,
@@ -438,7 +462,7 @@ def get_status() -> str:
         "model": settings.active_model,
         "capture_interval": settings.capture_interval,
         "performance_mode": settings.performance_mode,
-        "whisper_model": settings.whisper_model,
+        "analysis_mode": settings.analysis_mode,
         "data_path": str(settings.data_path),
     }, indent=2)
 

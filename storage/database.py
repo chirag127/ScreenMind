@@ -142,43 +142,41 @@ class Database:
         except Exception:
             pass
 
-        # Migration: add ocr_text column to existing databases
-        try:
-            conn.execute("ALTER TABLE activities ADD COLUMN ocr_text TEXT")
-        except Exception:
-            pass  # Column already exists
+        # ── Versioned Migrations ─────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY
+            )
+        """)
+        current = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] or 0
 
-        # Migration: add ocr_boxes column for search highlighting
-        try:
-            conn.execute("ALTER TABLE activities ADD COLUMN ocr_boxes TEXT")
-        except Exception:
-            pass  # Column already exists
+        migrations = [
+            # v1: add ocr_text column
+            "ALTER TABLE activities ADD COLUMN ocr_text TEXT",
+            # v2: add ocr_boxes column for search highlighting
+            "ALTER TABLE activities ADD COLUMN ocr_boxes TEXT",
+            # v3: add scene_description column
+            "ALTER TABLE activities ADD COLUMN scene_description TEXT",
+            # v4: add organized_text column
+            "ALTER TABLE activities ADD COLUMN organized_text TEXT",
+            # v5: add analysis_method column
+            "ALTER TABLE activities ADD COLUMN analysis_method TEXT",
+            # v6: add active_url column
+            "ALTER TABLE activities ADD COLUMN active_url TEXT",
+        ]
 
-        # Migration: add scene_description column for rich visual narration
-        try:
-            conn.execute("ALTER TABLE activities ADD COLUMN scene_description TEXT")
-        except Exception:
-            pass  # Column already exists
-
-        # Migration: add organized_text column for spatially organized OCR text
-        try:
-            conn.execute("ALTER TABLE activities ADD COLUMN organized_text TEXT")
-        except Exception:
-            pass  # Column already exists
-
-        # Migration: add analysis_method column (full/cache:identical/cache:minor/skipped)
-        try:
-            conn.execute("ALTER TABLE activities ADD COLUMN analysis_method TEXT")
-        except Exception:
-            pass  # Column already exists
-
-        # Migration: add active_url column for URL extracted from OCR/A11y text
-        try:
-            conn.execute("ALTER TABLE activities ADD COLUMN active_url TEXT")
-        except Exception:
-            pass  # Column already exists
+        for i, sql in enumerate(migrations, start=1):
+            if i > current:
+                try:
+                    conn.execute(sql)
+                except Exception:
+                    pass  # Column may already exist from pre-migration installs
+                conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", (i,))
 
         conn.commit()
+        if current < len(migrations):
+            print(f"[Database] Migrated schema v{current} → v{len(migrations)}")
+
         print(f"[Database] Initialized at {self._db_path}")
 
     # ── Activity CRUD ────────────────────────────────────────────────────
