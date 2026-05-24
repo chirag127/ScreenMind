@@ -84,32 +84,39 @@ async def search_activities(
 
     # 2. FTS5 keyword fallback
     try:
+        # Escape FTS5 special characters by wrapping in double quotes
+        fts_query = '"' + q.replace('"', '""') + '"'
         fts_rows = conn.execute(
             """
             SELECT a.id, a.timestamp, a.app_name, a.category, a.summary,
-                   a.details, a.screenshot_path, a.bookmarked, a.mood
+                   a.details, a.screenshot_path, a.bookmarked, a.mood, fts.rank
             FROM activities_fts fts
             JOIN activities a ON a.id = fts.rowid
             WHERE activities_fts MATCH ?
             ORDER BY rank
             LIMIT ?
             """,
-            (q, limit),
+            (fts_query, limit),
         ).fetchall()
 
-        for row in fts_rows:
+        for i, row in enumerate(fts_rows):
             row_dict = dict(row)
+            # FTS5 rank is negative (closer to 0 = better match)
+            # Convert to 0.3-0.7 range based on position in results
+            fts_score = round(0.7 - (i * 0.4 / max(len(fts_rows) - 1, 1)), 3)
+            row_dict.pop("rank", None)
             if row_dict["id"] not in seen_ids:
                 row_dict["screenshot_url"] = f"/api/screenshot/{row_dict['id']}"
-                row_dict["relevance_score"] = 0.5
+                row_dict["relevance_score"] = fts_score
                 row_dict["match_type"] = "keyword"
                 search_results.append(row_dict)
                 seen_ids.add(row_dict["id"])
             else:
+                # Boost semantic result if also matched by FTS
                 for r in search_results:
                     if r["id"] == row_dict["id"]:
-                        r["relevance_score"] = max(r["relevance_score"], 0.5)
-                        r["match_type"] = "keyword"
+                        r["relevance_score"] = min(r["relevance_score"] + 0.1, 1.0)
+                        r["match_type"] = "hybrid"
                         break
     except Exception:
         pass
