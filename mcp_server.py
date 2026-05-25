@@ -244,6 +244,8 @@ def get_activity_by_time(
         where += " AND CAST(strftime('%H', timestamp) AS INTEGER) <= ?"
         params.append(end_hour)
 
+    # FIXME: use parameterized where-clause builder instead of f-string interpolation.
+    # Currently safe (where is only built from static strings + params), but fragile.
     rows = conn.execute(
         f"""
         SELECT id, timestamp, app_name, category, summary, details,

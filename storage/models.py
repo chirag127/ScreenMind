@@ -70,6 +70,9 @@ class ScreenshotEntry(BaseModel):
     """
 
     id: Optional[int] = None
+    # TODO: migrate to timezone-aware UTC timestamps (datetime.now(timezone.utc)).
+    # All 25+ call sites currently use naive local time. Switching partially would
+    # create mixed timezones in the DB. Requires a full migration + display updates.
     timestamp: datetime
     screenshot_path: str
     window_title: Optional[str] = None

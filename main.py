@@ -127,6 +127,9 @@ async def main():
                   f"{cleaned['meetings']} meetings older than {settings.retention_days} days")
     embedder = Embedder()
 
+    # Thread-safe shutdown flag (checked by voice transcription thread before DB writes)
+    _shutdown = threading.Event()
+
     # ── Processing queue ─────────────────────────────────────────────
     processing_queue: asyncio.Queue = asyncio.Queue(maxsize=100)
 
@@ -179,6 +182,10 @@ async def main():
         def _transcribe():
             try:
                 transcript = llm_client.transcribe_audio(wav_bytes)
+                # Guard: don't write to DB if shutdown is in progress
+                if _shutdown.is_set():
+                    print("[VoiceMemo] Shutdown in progress — discarding memo")
+                    return
                 # Save to database as a voice memo activity
                 from storage.models import ScreenshotEntry
                 from datetime import datetime
@@ -231,6 +238,7 @@ async def main():
 
     def handle_signal(*_):
         print("\n[Main] Shutdown signal received...")
+        _shutdown.set()  # Signal voice transcription thread
         shutdown_event.set()
 
     signal.signal(signal.SIGINT, handle_signal)
