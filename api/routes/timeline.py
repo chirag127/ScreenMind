@@ -15,12 +15,15 @@ router = APIRouter(prefix="/api", tags=["timeline"])
 @router.get("/timeline")
 async def get_timeline(
     date: str = Query(default=None),
+    since: str = Query(default=None, description="ISO timestamp cutoff — only return activities after this time"),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ):
-    """Get activities for a specific date."""
+    """Get activities for a specific date, optionally filtered by since timestamp."""
     target_date = date or str(__import__("datetime").date.today())
     activities = db.get_activities_by_date(target_date, limit=limit, offset=offset)
+    if since:
+        activities = [a for a in activities if a.get("timestamp", "") >= since]
     for a in activities:
         if a.get("screenshot_path"):
             a["screenshot_url"] = f"/api/screenshot/{a['id']}"

@@ -90,14 +90,10 @@ def get_recent_activity(minutes: int = 30, limit: int = 50) -> list:
 
     Returns list of dicts with: id, timestamp, app_name, category, summary, details
     """
-    result = _get(f"/api/timeline?limit={limit}")
-    activities = result.get("activities", [])
-    if minutes and activities:
-        from datetime import datetime, timedelta
-        cutoff = datetime.now() - timedelta(minutes=minutes)
-        cutoff_str = cutoff.isoformat()
-        activities = [a for a in activities if a.get("timestamp", "") >= cutoff_str]
-    return activities
+    from datetime import datetime, timedelta
+    cutoff = (datetime.now() - timedelta(minutes=minutes)).isoformat()
+    result = _get(f"/api/timeline?since={urllib.parse.quote(cutoff)}&limit={limit}")
+    return result.get("activities", [])
 
 
 def get_activities_by_date(date_str: str, limit: int = 200) -> list:
