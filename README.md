@@ -147,7 +147,7 @@ Gemma 4 E2B is the only model that checks all five boxes.
 
 ```bash
 git clone https://github.com/ayushh0110/ScreenMind.git
-cd screenmind
+cd ScreenMind
 
 python -m venv venv
 venv\Scripts\activate        # Windows

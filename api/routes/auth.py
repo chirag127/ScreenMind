@@ -41,12 +41,13 @@ async def auth_status(request: Request):
     token = request.cookies.get("screenmind_session")
     authenticated = verify_session(token) if has_pin else True
     # First-run detection: setup_complete flag in settings.json
+    # If settings.json exists with any data, user already ran setup (even without the flag)
     import json
     setup_complete = False
     try:
         if settings.settings_json_path.exists():
             data = json.loads(settings.settings_json_path.read_text())
-            setup_complete = data.get("setup_complete", False)
+            setup_complete = data.get("setup_complete", bool(data))
     except Exception:
         pass
     return {"has_pin": has_pin, "authenticated": authenticated, "first_run": not setup_complete}

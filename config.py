@@ -23,7 +23,7 @@ _ALLOWED_OVERRIDES = {
     "auto_pause_heavy_apps", "heavy_apps",
     "defer_analysis", "meeting_transcription",
     "meeting_apps", "whisper_model",
-    "ollama_model", "active_model", "retention_days",
+    "active_model", "retention_days",
     "obsidian_enabled", "obsidian_vault_path",
     "notion_enabled", "notion_token", "notion_database_id",
     "webhook_enabled", "webhook_url", "webhook_events", "webhook_secret", "webhook_headers",
@@ -212,6 +212,9 @@ class Settings(BaseSettings):
     # ── Server ───────────────────────────────────────────────────────────
     api_host: str = Field(default="127.0.0.1", description="API bind host")
     api_port: int = Field(default=7777, description="API bind port")
+
+    # ── Internal State ────────────────────────────────────────────────────
+    setup_complete: bool = Field(default=False, description="Whether first-run setup is complete")
 
     model_config = {
         "env_file": ".env",
