@@ -38,6 +38,50 @@ class Database:
             self._local.conn.execute("PRAGMA foreign_keys=ON")
         return self._local.conn
 
+    # ── FTS5 schema (single source of truth) ─────────────────────────────
+
+    _FTS5_COLUMNS = "summary, details, ocr_text, app_name, scene_description, organized_text"
+
+    def _recreate_fts(self, conn: sqlite3.Connection):
+        """Drop and recreate the FTS5 virtual table + sync triggers.
+        
+        Wrapped in BEGIN IMMEDIATE so concurrent connections never observe
+        the table in a dropped state (triggers would fail their parent DML).
+        """
+        cols = self._FTS5_COLUMNS
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            # Drop old triggers first (they reference the table)
+            conn.execute("DROP TRIGGER IF EXISTS activities_fts_ai")
+            conn.execute("DROP TRIGGER IF EXISTS activities_fts_ad")
+            conn.execute("DROP TRIGGER IF EXISTS activities_fts_au")
+            conn.execute("DROP TABLE IF EXISTS activities_fts")
+            conn.execute(f"""
+                CREATE VIRTUAL TABLE activities_fts USING fts5(
+                    {cols}, content='activities', content_rowid='id'
+                )
+            """)
+            # Canonical FTS5 sync triggers — always use old.* for deletes
+            conn.execute(f"""CREATE TRIGGER activities_fts_ai AFTER INSERT ON activities BEGIN
+                INSERT INTO activities_fts(rowid, {cols})
+                VALUES (new.id, new.summary, new.details, new.ocr_text, new.app_name, new.scene_description, new.organized_text);
+            END""")
+            conn.execute(f"""CREATE TRIGGER activities_fts_ad AFTER DELETE ON activities BEGIN
+                INSERT INTO activities_fts(activities_fts, rowid, {cols})
+                VALUES ('delete', old.id, old.summary, old.details, old.ocr_text, old.app_name, old.scene_description, old.organized_text);
+            END""")
+            conn.execute(f"""CREATE TRIGGER activities_fts_au AFTER UPDATE ON activities BEGIN
+                INSERT INTO activities_fts(activities_fts, rowid, {cols})
+                VALUES ('delete', old.id, old.summary, old.details, old.ocr_text, old.app_name, old.scene_description, old.organized_text);
+                INSERT INTO activities_fts(rowid, {cols})
+                VALUES (new.id, new.summary, new.details, new.ocr_text, new.app_name, new.scene_description, new.organized_text);
+            END""")
+            conn.execute("INSERT INTO activities_fts(activities_fts) VALUES('rebuild')")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
     def _init_db(self):
         """Create tables and indexes if they don't exist."""
         settings.ensure_dirs()
@@ -121,27 +165,6 @@ class Database:
             )
         """)
 
-        # FTS5 virtual table for full-text keyword search
-        # Drop and recreate to handle schema migrations (adding organized_text)
-        try:
-            conn.execute("DROP TABLE IF EXISTS activities_fts")
-            conn.execute("""
-                CREATE VIRTUAL TABLE activities_fts USING fts5(
-                    summary, details, ocr_text, app_name, scene_description, organized_text,
-                    content='activities', content_rowid='id'
-                )
-            """)
-        except Exception:
-            pass  # Already exists with correct schema
-
-        # Always rebuild FTS5 index on startup to ensure sync
-        try:
-            conn.execute("INSERT INTO activities_fts(activities_fts) VALUES('rebuild')")
-            conn.commit()
-            print("[Database] FTS5 index rebuilt")
-        except Exception:
-            pass
-
         # ── Versioned Migrations ─────────────────────────────────────────
         conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
@@ -176,6 +199,33 @@ class Database:
         conn.commit()
         if current < len(migrations):
             print(f"[Database] Migrated schema v{current} → v{len(migrations)}")
+
+        # ── FTS5 setup (after migrations so all columns exist for rebuild) ───
+        # Check if all 3 sync triggers exist (not just one, to catch partial creates)
+        trigger_count = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' "
+            "AND name IN ('activities_fts_ai', 'activities_fts_ad', 'activities_fts_au')"
+        ).fetchone()[0]
+
+        if trigger_count < 3:
+            try:
+                self._recreate_fts(conn)
+                print("[Database] FTS5 table + triggers created, index rebuilt")
+            except Exception as e:
+                print(f"[Database] FTS5 setup failed: {e}")
+        else:
+            # Triggers exist — verify FTS5 table is intact (not corrupted)
+            try:
+                conn.execute(
+                    f"SELECT {self._FTS5_COLUMNS} FROM activities_fts LIMIT 0"
+                )
+            except Exception as e:
+                print(f"[Database] FTS5 table damaged, rebuilding: {e}")
+                try:
+                    self._recreate_fts(conn)
+                    print("[Database] FTS5 rebuilt successfully")
+                except Exception as e2:
+                    print(f"[Database] FTS5 rebuild failed: {e2}")
 
         print(f"[Database] Initialized at {self._db_path}")
 
@@ -258,22 +308,7 @@ class Database:
                 activity_id,
             ),
         )
-        # Sync FTS5 index for full-text keyword search
-        # FTS5 content= tables need DELETE+INSERT (INSERT OR REPLACE doesn't work)
-        try:
-            conn.execute(
-                "INSERT INTO activities_fts(activities_fts, rowid, summary, details, ocr_text, app_name, scene_description, organized_text) VALUES('delete', ?, ?, ?, ?, ?, ?, ?)",
-                (activity_id, analysis.activity_summary, analysis.detailed_context, ocr_text or '', analysis.app_name, analysis.scene_description, organized_text or ''),
-            )
-        except Exception:
-            pass
-        try:
-            conn.execute(
-                "INSERT INTO activities_fts(rowid, summary, details, ocr_text, app_name, scene_description, organized_text) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (activity_id, analysis.activity_summary, analysis.detailed_context, ocr_text, analysis.app_name, analysis.scene_description, organized_text),
-            )
-        except Exception:
-            pass  # FTS5 table might not exist in old DBs
+        # FTS5 sync is handled automatically by AFTER UPDATE trigger
         conn.commit()
 
     def get_activities_by_date(

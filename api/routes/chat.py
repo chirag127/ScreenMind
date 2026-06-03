@@ -18,6 +18,48 @@ from api.dependencies import db, embedder
 router = APIRouter(prefix="/api", tags=["chat"])
 
 
+def _build_timeline_context(primary, top, sources, send_progress):
+    """
+    Given a ranked list of candidate activities, build timeline_context,
+    populate sources, and return (timeline_context, screenshot_path, progress_yields).
+    Shared by both FTS and semantic-fallback paths to avoid drift.
+    """
+    progress = []
+    progress.append(send_progress(f"\ud83d\udcf8 Found: {primary['app_name']} (score: {primary['_relevance']})"))
+
+    for a in top[:5]:
+        sources.append({
+            "id": a["id"],
+            "timestamp": a.get("timestamp", ""),
+            "app_name": a.get("app_name", "Unknown"),
+            "summary": (a.get("summary") or "")[:80],
+            "screenshot_url": f"/api/screenshot/{a['id']}",
+        })
+
+    organized = primary.get("organized_text") or ""
+    ocr_raw = primary.get("ocr_text") or ""
+    screen_text = organized.strip() if organized.strip() else ocr_raw
+
+    timeline_context = None
+    screenshot_path = None
+
+    if screen_text:
+        if len(screen_text) > 3000:
+            screen_text = screen_text[:3000]
+        timeline_context = f"[Screen \u2014 {primary.get('app_name', 'Unknown')}]\n{screen_text}"
+        screenshot_path = primary.get("screenshot_path")
+    else:
+        img_path = primary.get("screenshot_path")
+        if img_path and Path(img_path).exists():
+            progress.append(send_progress("\ud83d\udcf7 Loading screenshot..."))
+            timeline_context = "vision"
+            screenshot_path = img_path
+        else:
+            timeline_context = f"[Screen \u2014 {primary.get('app_name', 'Unknown')}]\n(no text captured)"
+            screenshot_path = None
+
+    return timeline_context, screenshot_path, progress
+
 @router.post("/chat")
 async def chat_with_memory(request: Request):
     """
@@ -104,18 +146,30 @@ async def chat_with_memory(request: Request):
             fts_ids = []
             fts_rank_map = {}  # id → FTS rank position (0 = best)
             try:
-                fts_query = " OR ".join(q_keywords)
+                fts_query = " OR ".join('"' + w.replace('"', '""') + '"' for w in q_keywords)
                 fts_rows = conn.execute(
                     "SELECT rowid FROM activities_fts WHERE activities_fts MATCH ? ORDER BY rank LIMIT 25",
                     (fts_query,),
                 ).fetchall()
                 fts_ids = [r[0] for r in fts_rows]
                 fts_rank_map = {rid: pos for pos, rid in enumerate(fts_ids)}
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[Chat] FTS5 query failed: {e}")
+                # Auto-repair corrupted FTS5 index
+                if "malformed" in str(e).lower():
+                    try:
+                        db._recreate_fts(conn)
+                        print("[Chat] FTS5 repaired, retrying query...")
+                        fts_rows = conn.execute(
+                            "SELECT rowid FROM activities_fts WHERE activities_fts MATCH ? ORDER BY rank LIMIT 25",
+                            (fts_query,),
+                        ).fetchall()
+                        fts_ids = [r[0] for r in fts_rows]
+                        fts_rank_map = {rid: pos for pos, rid in enumerate(fts_ids)}
+                    except Exception as e2:
+                        print(f"[Chat] FTS5 repair failed: {e2}")
 
             if fts_ids:
-                mode = "memory"
                 yield send_progress(f"🔍 Searching timeline for: {', '.join(q_keywords)}")
 
                 # ── Load FTS candidates with embeddings ──
@@ -205,39 +259,59 @@ async def chat_with_memory(request: Request):
                     top = candidates[:5]
 
                 # ── Guard: if candidates were deleted between probe and SELECT ──
-                if not top:
-                    pass  # Fall through — timeline_context stays None → normal chat mode
-                else:
+                if top:
                     primary = top[0]
-                    yield send_progress(f"📸 Found: {primary['app_name']} (score: {primary['_relevance']})")
+                    ctx, ss_path, prog = _build_timeline_context(primary, top, sources, send_progress)
+                    for p in prog:
+                        yield p
+                    if ctx is not None:
+                        timeline_context = ctx
+                        screenshot_path = ss_path
+                        mode = "memory"
 
-                    for a in top[:5]:
-                        sources.append({
-                            "id": a["id"],
-                            "timestamp": a.get("timestamp", ""),
-                            "app_name": a.get("app_name", "Unknown"),
-                            "summary": (a.get("summary") or "")[:80],
-                            "screenshot_url": f"/api/screenshot/{a['id']}",
-                        })
+            # ── Semantic fallback ─────────────────────────────────
+            # If FTS5 returned nothing (or was broken), try pure embedding search
+            if timeline_context is None and embedder:
+                yield send_progress(f"🔍 Searching timeline for: {', '.join(q_keywords)}")
 
-                    organized = primary.get("organized_text") or ""
-                    ocr_raw = primary.get("ocr_text") or ""
-                    screen_text = organized.strip() if organized.strip() else ocr_raw
+                fallback_rows = conn.execute(
+                    """SELECT id, timestamp, app_name, category, summary, details,
+                           ocr_text, organized_text, screenshot_path, window_title,
+                           scene_description, embedding
+                    FROM activities
+                    WHERE analyzed = 1 AND embedding IS NOT NULL
+                    ORDER BY timestamp DESC LIMIT 500""",
+                ).fetchall()
+                fb_candidates = [dict(r) for r in fallback_rows]
 
-                    if screen_text:
-                        if len(screen_text) > 3000:
-                            screen_text = screen_text[:3000]
-                        timeline_context = f"[Screen — {primary.get('app_name', 'Unknown')}]\n{screen_text}"
-                        screenshot_path = primary.get("screenshot_path")
-                    else:
-                        img_path = primary.get("screenshot_path")
-                        if img_path and Path(img_path).exists():
-                            yield send_progress("📷 Loading screenshot...")
-                            timeline_context = "vision"
-                            screenshot_path = img_path
-                        else:
-                            timeline_context = f"[Screen — {primary.get('app_name', 'Unknown')}]\n(no text captured)"
-                            screenshot_path = None
+                if fb_candidates:
+                    emb_data = []
+                    for i, a in enumerate(fb_candidates):
+                        emb = db._decode_embedding(a.pop("embedding", None))
+                        if emb:
+                            emb_data.append((i, emb))
+
+                    if emb_data:
+                        indices, vectors = zip(*emb_data)
+                        ranked = embedder.search(question, list(vectors), top_k=min(5, len(vectors)))
+
+                        top = []
+                        for local_idx, sem_score in ranked:
+                            orig_idx = indices[local_idx]
+                            a = fb_candidates[orig_idx]
+                            a["_relevance"] = round(sem_score, 3)
+                            top.append(a)
+
+                        # Relevance gate: only enter memory mode if top result is meaningful
+                        if top and top[0]["_relevance"] >= 0.35:
+                            primary = top[0]
+                            ctx, ss_path, prog = _build_timeline_context(primary, top, sources, send_progress)
+                            for p in prog:
+                                yield p
+                            if ctx is not None:
+                                timeline_context = ctx
+                                screenshot_path = ss_path
+                                mode = "memory"
 
         # ── Step 3: Build messages ────────────────────────────────
 
