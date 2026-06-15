@@ -2,12 +2,19 @@
 Global Hotkey Module
 Listens for configurable keyboard shortcuts for bookmarking, pause/resume, and voice memos.
 Uses the `keyboard` library for cross-platform hotkey detection.
+
+Note: The `keyboard` library does not support modifier+letter hotkeys on macOS.
+On darwin, start() is a no-op and hotkeys are unavailable (use the dashboard instead).
 """
 
+import sys
 import threading
 from typing import Callable, Optional
 
-import keyboard
+# Conditional import: on macOS, `import keyboard` itself installs a low-level
+# event tap that triggers an Input Monitoring permission prompt — skip entirely.
+if sys.platform != "darwin":
+    import keyboard
 
 from config import settings
 
@@ -42,6 +49,10 @@ class HotkeyListener:
     def start(self):
         """Register global hotkeys."""
         if self._running:
+            return
+
+        if sys.platform == "darwin":
+            print("[Hotkey] Disabled on macOS (keyboard library lacks modifier+letter support). Use the dashboard.")
             return
 
         try:
