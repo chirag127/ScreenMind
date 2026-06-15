@@ -1,5 +1,8 @@
 # Python
 __pycache__/
+
+# IDE
+.kiro/
 *.py[cod]
 *$py.class
 *.egg-info/
