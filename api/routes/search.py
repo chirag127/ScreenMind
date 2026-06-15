@@ -86,17 +86,28 @@ async def search_activities(
     try:
         # Escape FTS5 special characters by wrapping in double quotes
         fts_query = '"' + q.replace('"', '""') + '"'
+
+        fts_date_clauses = []
+        fts_date_params = []
+        if date_from:
+            fts_date_clauses.append("DATE(a.timestamp) >= ?")
+            fts_date_params.append(date_from)
+        if date_to:
+            fts_date_clauses.append("DATE(a.timestamp) <= ?")
+            fts_date_params.append(date_to)
+        fts_date_where = (" AND " + " AND ".join(fts_date_clauses)) if fts_date_clauses else ""
+
         fts_rows = conn.execute(
-            """
+            f"""
             SELECT a.id, a.timestamp, a.app_name, a.category, a.summary,
                    a.details, a.screenshot_path, a.bookmarked, a.mood, fts.rank
             FROM activities_fts fts
             JOIN activities a ON a.id = fts.rowid
-            WHERE activities_fts MATCH ?
+            WHERE activities_fts MATCH ?{fts_date_where}
             ORDER BY rank
             LIMIT ?
             """,
-            (fts_query, limit),
+            (fts_query, *fts_date_params, limit),
         ).fetchall()
 
         for i, row in enumerate(fts_rows):
@@ -123,16 +134,26 @@ async def search_activities(
 
     # 3. Meeting transcript search
     try:
+        mtg_date_clauses = []
+        mtg_date_params = []
+        if date_from:
+            mtg_date_clauses.append("DATE(start_time) >= ?")
+            mtg_date_params.append(date_from)
+        if date_to:
+            mtg_date_clauses.append("DATE(start_time) <= ?")
+            mtg_date_params.append(date_to)
+        mtg_date_where = (" AND " + " AND ".join(mtg_date_clauses)) if mtg_date_clauses else ""
+
         mtg_rows = conn.execute(
-            """
+            f"""
             SELECT id, start_time, end_time, app_name, duration_minutes,
                    transcript, summary
             FROM meetings
-            WHERE transcript LIKE ? OR summary LIKE ?
+            WHERE (transcript LIKE ? OR summary LIKE ?){mtg_date_where}
             ORDER BY start_time DESC
             LIMIT ?
             """,
-            (f"%{q}%", f"%{q}%", limit),
+            (f"%{q}%", f"%{q}%", *mtg_date_params, limit),
         ).fetchall()
 
         for row in mtg_rows:

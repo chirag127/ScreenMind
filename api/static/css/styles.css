@@ -370,11 +370,57 @@ mark {
   max-height: 2.8em; overflow: hidden; opacity: 0.7;
 }
 .search-filters {
-  display: flex; gap: 10px; margin-bottom: 16px; align-items: center;
+  display: flex; gap: 10px; margin-bottom: 16px; align-items: center; flex-wrap: wrap;
 }
 .search-filters select {
   padding: 6px 12px; font-size: 0.8rem; border-radius: var(--radius-sm);
   background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary);
+}
+
+/* Date Filter Pills */
+.search-date-pills {
+  display: inline-flex; border: 1px solid var(--border); border-radius: 20px;
+  overflow: hidden; flex-shrink: 0;
+}
+.search-date-pill {
+  padding: 6px 14px; font-size: 0.78rem; font-weight: 500;
+  color: var(--text-muted); background: transparent; border: none;
+  border-right: 1px solid var(--border); cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  white-space: nowrap;
+}
+.search-date-pill:last-child { border-right: none; }
+.search-date-pill:hover { background: rgba(255,255,255,0.04); color: var(--text-primary); }
+.search-date-pill.active { background: var(--accent); color: white; }
+.search-date-pill:active { transform: scale(0.95); }
+
+/* Custom date range row */
+.search-date-range {
+  display: flex; align-items: center; gap: 8px;
+  max-height: 0; overflow: hidden; opacity: 0;
+  transition: max-height 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.25s ease, margin 0.25s ease;
+  margin-bottom: 0;
+}
+.search-date-range.visible {
+  max-height: 50px; opacity: 1; margin-bottom: 12px;
+}
+.search-date-range label {
+  font-size: 0.78rem; color: var(--text-muted); white-space: nowrap;
+}
+.search-date-range input[type="date"] {
+  background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--text-primary); padding: 6px 12px; border-radius: var(--radius-sm);
+  font-size: 0.8rem; transition: border-color 0.2s, box-shadow 0.2s;
+}
+.search-date-range input[type="date"]:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px rgba(139,92,246,0.12);
+}
+.search-date-range input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7); cursor: pointer;
+}
+.search-date-range .date-range-sep {
+  color: var(--text-muted); font-size: 0.78rem;
 }
 
 /* ── Enhanced Modal ───────────────────────────────────── */
@@ -541,12 +587,36 @@ mark {
 .chat-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 0; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  flex-wrap: wrap; gap: 8px;
 }
 .chat-header-title {
   display: flex; align-items: center; gap: 10px;
   font-weight: 600; color: var(--text-primary); font-size: 1rem;
 }
 .chat-header-title span { font-size: 1.3rem; }
+.chat-context-bar {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding-top: 4px;
+}
+.chat-context-label {
+  font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: 0.5px; font-weight: 600; white-space: nowrap;
+}
+.chat-context-pills {
+  display: inline-flex; border: 1px solid var(--border); border-radius: 16px;
+  overflow: hidden;
+}
+.chat-context-pill {
+  padding: 4px 12px; font-size: 0.72rem; font-weight: 500;
+  color: var(--text-muted); background: transparent; border: none;
+  border-right: 1px solid var(--border); cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  white-space: nowrap;
+}
+.chat-context-pill:last-child { border-right: none; }
+.chat-context-pill:hover { background: rgba(255,255,255,0.04); color: var(--text-primary); }
+.chat-context-pill.active { background: var(--accent); color: white; }
+.chat-context-pill:active { transform: scale(0.95); }
 .chat-new-btn {
   font-size: 0.78rem; padding: 6px 14px; border-radius: 14px;
   background: rgba(139,92,246,0.12); color: var(--accent);

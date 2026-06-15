@@ -2,6 +2,7 @@
 // ══════════════════════════════════════════════════════════
 let chatHistory = [];  // {role: 'user'|'assistant', content: string}
 let chatBusy = false;
+let chatContextRange = 'today'; // 'today' | '7d' | '30d' | 'all'
 
 async function renderChat(el) {
   el.innerHTML = `
@@ -9,6 +10,15 @@ async function renderChat(el) {
       <div class="chat-header">
         <div class="chat-header-title"><span>🧠</span> ScreenMind <span class="hint-trigger" id="chat-hint-trigger" style="display:none" title="">?</span></div>
         <button class="chat-new-btn" onclick="newChat()">+ New chat</button>
+        <div class="chat-context-bar">
+          <span class="chat-context-label">Context:</span>
+          <div class="chat-context-pills">
+            <button class="chat-context-pill${chatContextRange === 'today' ? ' active' : ''}" data-range="today">Today</button>
+            <button class="chat-context-pill${chatContextRange === '7d' ? ' active' : ''}" data-range="7d">7 Days</button>
+            <button class="chat-context-pill${chatContextRange === '30d' ? ' active' : ''}" data-range="30d">30 Days</button>
+            <button class="chat-context-pill${chatContextRange === 'all' ? ' active' : ''}" data-range="all">All Time</button>
+          </div>
+        </div>
       </div>
       <div class="chat-messages" id="chat-messages">
         <div class="chat-welcome" id="chat-welcome">
@@ -27,6 +37,15 @@ async function renderChat(el) {
         <button class="chat-send" id="chat-send" onclick="submitChat()">➤</button>
       </div>
     </div>`;
+
+  // ── Event: context pill clicks ──
+  document.querySelectorAll('.chat-context-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      chatContextRange = pill.dataset.range;
+      document.querySelectorAll('.chat-context-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+    });
+  });
 
   $('#chat-input').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitChat(); }
@@ -154,7 +173,7 @@ window.submitChat = async function() {
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, history: chatHistory.slice(0, -1) }),
+      body: JSON.stringify({ question, history: chatHistory.slice(0, -1), context_range: chatContextRange }),
     });
 
     const reader = response.body.getReader();

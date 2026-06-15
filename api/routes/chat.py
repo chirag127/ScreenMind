@@ -81,8 +81,23 @@ async def chat_with_memory(request: Request):
     body = await request.json()
     question = body.get("question", "").strip()
     history = body.get("history", [])
+    context_range = body.get("context_range", "all")
     if not question:
         raise HTTPException(status_code=400, detail="No question provided")
+
+    # Compute date cutoff from context_range
+    from datetime import datetime as _dt_ctx, timedelta as _td_ctx
+    _date_filter_sql = ""
+    if context_range == "today":
+        _date_cutoff = _dt_ctx.now().strftime("%Y-%m-%d")
+        _date_filter_sql = f" AND DATE(timestamp) >= '{_date_cutoff}'"
+    elif context_range == "7d":
+        _date_cutoff = (_dt_ctx.now() - _td_ctx(days=6)).strftime("%Y-%m-%d")
+        _date_filter_sql = f" AND DATE(timestamp) >= '{_date_cutoff}'"
+    elif context_range == "30d":
+        _date_cutoff = (_dt_ctx.now() - _td_ctx(days=29)).strftime("%Y-%m-%d")
+        _date_filter_sql = f" AND DATE(timestamp) >= '{_date_cutoff}'"
+    # 'all' → no filter
 
     conn = db._get_conn()
 
@@ -148,7 +163,10 @@ async def chat_with_memory(request: Request):
             try:
                 fts_query = " OR ".join('"' + w.replace('"', '""') + '"' for w in q_keywords)
                 fts_rows = conn.execute(
-                    "SELECT rowid FROM activities_fts WHERE activities_fts MATCH ? ORDER BY rank LIMIT 25",
+                    f"""SELECT a.id FROM activities_fts
+                    JOIN activities a ON a.id = activities_fts.rowid
+                    WHERE activities_fts MATCH ?{_date_filter_sql.replace('timestamp', 'a.timestamp')}
+                    ORDER BY rank LIMIT 25""",
                     (fts_query,),
                 ).fetchall()
                 fts_ids = [r[0] for r in fts_rows]
@@ -161,7 +179,10 @@ async def chat_with_memory(request: Request):
                         db._recreate_fts(conn)
                         print("[Chat] FTS5 repaired, retrying query...")
                         fts_rows = conn.execute(
-                            "SELECT rowid FROM activities_fts WHERE activities_fts MATCH ? ORDER BY rank LIMIT 25",
+                            f"""SELECT a.id FROM activities_fts
+                            JOIN activities a ON a.id = activities_fts.rowid
+                            WHERE activities_fts MATCH ?{_date_filter_sql.replace('timestamp', 'a.timestamp')}
+                            ORDER BY rank LIMIT 25""",
                             (fts_query,),
                         ).fetchall()
                         fts_ids = [r[0] for r in fts_rows]
@@ -179,7 +200,7 @@ async def chat_with_memory(request: Request):
                            ocr_text, organized_text, screenshot_path, window_title,
                            scene_description, embedding
                     FROM activities
-                    WHERE id IN ({placeholders}) AND analyzed = 1
+                    WHERE id IN ({placeholders}) AND analyzed = 1{_date_filter_sql}
                     ORDER BY timestamp DESC""",
                     fts_ids,
                 ).fetchall()
@@ -189,11 +210,11 @@ async def chat_with_memory(request: Request):
                 if len(candidates) < 3:
                     existing_ids = {a["id"] for a in candidates}
                     fill_rows = conn.execute(
-                        """SELECT id, timestamp, app_name, category, summary, details,
+                        f"""SELECT id, timestamp, app_name, category, summary, details,
                                ocr_text, organized_text, screenshot_path, window_title,
                                scene_description, embedding
                         FROM activities
-                        WHERE analyzed = 1 AND embedding IS NOT NULL
+                        WHERE analyzed = 1 AND embedding IS NOT NULL{_date_filter_sql}
                         ORDER BY timestamp DESC LIMIT 10""",
                     ).fetchall()
                     for r in fill_rows:
@@ -275,11 +296,11 @@ async def chat_with_memory(request: Request):
                 yield send_progress(f"🔍 Searching timeline for: {', '.join(q_keywords)}")
 
                 fallback_rows = conn.execute(
-                    """SELECT id, timestamp, app_name, category, summary, details,
+                    f"""SELECT id, timestamp, app_name, category, summary, details,
                            ocr_text, organized_text, screenshot_path, window_title,
                            scene_description, embedding
                     FROM activities
-                    WHERE analyzed = 1 AND embedding IS NOT NULL
+                    WHERE analyzed = 1 AND embedding IS NOT NULL{_date_filter_sql}
                     ORDER BY timestamp DESC LIMIT 500""",
                 ).fetchall()
                 fb_candidates = [dict(r) for r in fallback_rows]
