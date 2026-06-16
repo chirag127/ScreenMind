@@ -236,8 +236,9 @@ class TestGetRecentActivity:
 class TestCaptureNow:
     """Tests for capture_now tool."""
 
-    @patch("mcp_server.urllib.request.urlopen")
-    def test_success(self, mock_urlopen, mock_mcp_deps):
+    @patch("urllib.request.urlopen")
+    @patch("urllib.request.Request")
+    def test_success(self, mock_request, mock_urlopen, mock_mcp_deps):
         mock_urlopen.return_value.__enter__ = MagicMock()
         mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
         from mcp_server import capture_now
@@ -245,7 +246,7 @@ class TestCaptureNow:
         data = json.loads(result)
         assert data["status"] == "captured"
 
-    @patch("mcp_server.urllib.request.urlopen")
+    @patch("urllib.request.urlopen")
     def test_server_not_running(self, mock_urlopen, mock_mcp_deps):
         import urllib.error
         mock_urlopen.side_effect = urllib.error.URLError("refused")

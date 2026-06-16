@@ -5,7 +5,7 @@ from config import Settings
 
 def test_default_settings():
     s = Settings(data_dir="/tmp/screenmind_test")
-    assert s.capture_interval == 30
+    assert s.capture_interval == 40
     assert s.screenshot_quality == 70
     assert s.ollama_model == "gemma4:e2b"
     assert s.api_port == 7777

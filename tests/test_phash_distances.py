@@ -27,15 +27,21 @@ def test_similar_images_have_low_distance():
 
 def test_different_images_have_high_distance():
     """Very different images should produce high pHash distance."""
-    img_white = _make_image((255, 255, 255))
-    img_dark_pattern = Image.new("RGB", (200, 200))
-    # Draw a checkerboard-like pattern to create structural difference
-    pixels = img_dark_pattern.load()
+    # Horizontal gradient — smooth frequency pattern
+    img_a = Image.new("RGB", (200, 200))
+    pixels_a = img_a.load()
     for x in range(200):
         for y in range(200):
-            pixels[x, y] = (0, 0, 0) if (x // 25 + y // 25) % 2 == 0 else (255, 255, 255)
+            pixels_a[x, y] = (int(x / 200 * 255), 0, 0)
 
-    dist = imagehash.phash(img_white) - imagehash.phash(img_dark_pattern)
+    # High-frequency checkerboard — very different spatial structure
+    img_b = Image.new("RGB", (200, 200))
+    pixels_b = img_b.load()
+    for x in range(200):
+        for y in range(200):
+            pixels_b[x, y] = (255, 255, 255) if (x // 10 + y // 10) % 2 == 0 else (0, 0, 0)
+
+    dist = imagehash.phash(img_a) - imagehash.phash(img_b)
     assert dist > 5, f"Expected high distance for different images, got {dist}"
 
 
@@ -55,12 +61,19 @@ def test_deduplicator_passes_different():
     from capture.dedup import ScreenDeduplicator
     dedup = ScreenDeduplicator(threshold=8)
 
-    img_a = _make_image((255, 255, 255))
-    img_b = Image.new("RGB", (200, 200))
-    pixels = img_b.load()
+    # Horizontal gradient
+    img_a = Image.new("RGB", (200, 200))
+    pixels_a = img_a.load()
     for x in range(200):
         for y in range(200):
-            pixels[x, y] = (0, 0, 0) if (x // 25 + y // 25) % 2 == 0 else (255, 255, 255)
+            pixels_a[x, y] = (int(x / 200 * 255), 0, 0)
+
+    # High-frequency checkerboard
+    img_b = Image.new("RGB", (200, 200))
+    pixels_b = img_b.load()
+    for x in range(200):
+        for y in range(200):
+            pixels_b[x, y] = (255, 255, 255) if (x // 10 + y // 10) % 2 == 0 else (0, 0, 0)
 
     assert dedup.is_duplicate(img_a) is False
     assert dedup.is_duplicate(img_b) is False  # different enough to pass
