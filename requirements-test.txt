@@ -1,0 +1,31 @@
+# Lightweight test dependencies — avoids GPU/vision packages that fail in CI.
+# Used by .github/workflows/ci.yml instead of full requirements.txt.
+
+# Core (needed by config, models, API)
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic>=2.11.0,<3.0.0
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+
+# Screen Capture (lightweight — no GPU)
+Pillow==11.1.0
+imagehash==4.3.1
+
+# HTTP client (llm_client, tests)
+httpx==0.28.1
+numpy==2.2.2
+
+# Git Integration
+gitpython==3.1.44
+
+# Encryption
+cryptography==46.0.7
+
+# MCP
+mcp[cli]==1.26.0
+
+# Test runner
+pytest
+pytest-asyncio
+pytest-cov
