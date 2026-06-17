@@ -13,6 +13,9 @@ python-dotenv==1.0.1
 Pillow==11.1.0
 imagehash==4.3.1
 
+# Screen capture (tiny — test_workers imports capture_worker → screen.py)
+mss==9.0.2
+
 # HTTP client (llm_client, tests)
 httpx==0.28.1
 numpy==2.2.2

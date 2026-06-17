@@ -50,6 +50,7 @@
 - **🔬 Gemma 4 Vision Analysis** — Every screenshot analyzed: app detection, activity categorization, mood, scene description, spatial layout regions.
 - **🔍 Hybrid Search** — Semantic embeddings (MiniLM) + FTS5 keyword search. Find anything by *meaning*, not just keywords.
 - **💬 Chat with Memory** — Conversational RAG with follow-up support. Ask "what did Ishaa say on Discord?" → get the actual message.
+- **🧠 Model Hub** — In-app model download with live progress tracking. Chat and Summary are locked with witty brain animations until the model is ready — then auto-unlock. No terminal needed.
 - **🎙️ Voice Memos** — Hold `Ctrl+Shift+V` → Gemma 4's native audio encoder transcribes. Screenshot captured alongside.
 - **🎤 Meeting Transcription** — Auto-detects Zoom/Teams/Meet, records audio, transcribes, generates structured summaries.
 - **📊 Analytics Dashboard** — Category breakdown, top apps, hourly heatmap, meeting stats, focus metrics.
@@ -167,7 +168,9 @@ python main.py
 #### 3️⃣ Open → **http://127.0.0.1:7777** 
 
 On first run, ScreenMind will:
-- Auto-download Gemma 4 E2B GGUF model (~5GB, one time)
+- Auto-detect your GPU and download `llama-server` if not found (CUDA/CPU auto-selected)
+- Open the **Model Hub** — download Gemma 4 E2B GGUF (~5GB) with progress tracking right in the UI
+- Chat and Summary stay locked (🧠💤 *"I need my brain to think!"*) until the model is ready, then auto-unlock
 - Start `llama-server` in background
 - Show the welcome screen to set up an optional PIN
 - Create `~/.screenmind/` for data storage
@@ -520,8 +523,8 @@ screenmind/
 
 | Scenario | Behavior |
 |----------|----------|
-| **llama-server not running** | Auto-starts on launch. Captures continue; analysis retried with backoff. |
-| **Model not downloaded** | Auto-downloads GGUF on first start via HuggingFace. |
+| **llama-server not found** | Auto-downloads correct binary from GitHub releases (CUDA/CPU auto-detected). Checks disk space first. |
+| **Model not downloaded** | Model Hub shows lock screen with download cards. Progress tracked in UI. Chat/Summary locked until ready. |
 | **GPU out of memory** | Detects OOM, retries with delay, re-queues on persistent failure. |
 | **Duplicate frames** | pHash dedup skips identical screenshots (threshold: 8 hamming distance). |
 | **Stale queue items** | Captures >3 min old auto-skipped. Backfilled during idle. |
@@ -537,13 +540,13 @@ screenmind/
 The web dashboard at `http://127.0.0.1:7777` features:
 
 - **Timeline** — Browse activities by date with thumbnails, AI summaries, category badges
-- **Chat** — Conversational AI with screen memory. Ask anything about your history.
+- **Chat** — Conversational AI with screen memory. Ask anything about your history. Locked with 🧠💤 brain animation until model is ready.
 - **Search** — Semantic + keyword hybrid search with OCR highlighting on screenshots
 - **Analytics** — Category charts, top apps, hourly heatmap, meeting stats
 - **Rewind** — Timelapse player with play/pause/scrub/speed controls
 - **Memos** — Voice memo list with audio player
 - **Agents** — Create, edit, run, and monitor agents
-- **Settings** — 8 organized sections: Shortcuts, Capture, AI, Audio, Privacy, Automation, Integrations, Storage
+- **Settings** — Model Hub (download/switch models with progress), Shortcuts, Capture, AI, Audio, Privacy, Automation, Integrations, Storage
 
 Dark glassmorphism UI. No build step. Instant load.
 
