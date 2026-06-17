@@ -407,7 +407,7 @@ const _modelState = {
   download: null,
   message: '',
   models: [],
-  capabilities: { audio: false, vision: false },
+  capabilities: null,  // null until first poll — prevents false audio warnings
 };
 
 // Adaptive poll interval — faster during active lifecycle
