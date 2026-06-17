@@ -1,0 +1,8 @@
+[run]
+omit =
+    platform_support/linux.py
+    platform_support/macos.py
+    main.py
+    ui/overlay.py
+    capture/voice_recorder.py
+    workers/audio_worker.py
