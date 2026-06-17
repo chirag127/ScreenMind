@@ -150,7 +150,7 @@ function _updateChatLockState() {
     lockEl.innerHTML = `
       <div class="chat-locked-icon">🧠🔌</div>
       <h3 class="chat-locked-title">Something went wrong</h3>
-      <p class="chat-locked-desc">${_modelState.message || 'Server couldn\\'t start. Check GPU/VRAM.'}</p>
+      <p class="chat-locked-desc">${_modelState.message || "Server couldn't start. Check GPU/VRAM."}</p>
       <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
         <a href="#" onclick="openModelHub();return false" style="color:var(--accent);font-size:0.85rem">Open Model Hub</a>
         <button class="btn btn-primary btn-sm" onclick="retryModelStart()">🔄 Retry</button>
