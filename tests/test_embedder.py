@@ -9,7 +9,10 @@ from engine.embedder import Embedder
 def embedder():
     """Shared embedder instance (model load is expensive)."""
     e = Embedder()
-    e._ensure_model()
+    try:
+        e._ensure_model()
+    except OSError as exc:
+        pytest.skip(f"Embedder model unavailable (offline?): {exc}")
     return e
 
 
