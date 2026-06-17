@@ -13,6 +13,8 @@ def embedder():
         e._ensure_model()
     except OSError as exc:
         pytest.skip(f"Embedder model unavailable (offline?): {exc}")
+    except ImportError as exc:
+        pytest.skip(f"sentence-transformers not installed: {exc}")
     return e
 
 
