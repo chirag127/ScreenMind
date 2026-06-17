@@ -270,6 +270,35 @@ async function pollStatus() {
       dot.className = 'status-dot'; txt.textContent = `Capturing (${count})`;
       if (pauseBtn) { pauseBtn.classList.remove('paused'); pauseIcon.textContent = '\u23f8'; pauseLabel.textContent = 'Stop Capturing'; }
     }
+
+    // ── Model state tracking ──
+    if (s.model) {
+      const prev = _modelStatus;
+      _modelStatus = s.model.status; // no_model | downloading | starting | ready | error
+      _modelDownload = s.model.download;
+
+      // Update chat lock screen if it exists
+      _updateChatLockState();
+
+      // Auto-unlock: transition from non-ready → ready
+      if (prev !== 'ready' && _modelStatus === 'ready') {
+        showToast('🎉 Model ready! Chat is now available.', 'success');
+        _updateChatLockState();
+      }
+
+      // Nav badge: show warning dot on Chat nav when model not ready
+      const chatNav = document.querySelector('[data-view="chat"] .nav-badge-warning');
+      if (_modelStatus === 'ready') {
+        if (chatNav) chatNav.remove();
+      } else {
+        const chatNavItem = document.querySelector('[data-view="chat"]');
+        if (chatNavItem && !chatNavItem.querySelector('.nav-badge-warning')) {
+          const badge = document.createElement('span');
+          badge.className = 'nav-badge-warning';
+          chatNavItem.appendChild(badge);
+        }
+      }
+    }
   } catch { $('#status-text').textContent = 'Offline'; $('#status-dot').className = 'status-dot error'; }
 }
 
@@ -862,18 +891,36 @@ function cycleSpeed() {
 //  SUMMARY & STANDUP VIEW
 // ══════════════════════════════════════════════════════════
 async function renderSummary(el) {
+  // Check model status for soft lock
+  let modelReady = true;
+  try {
+    const status = await api('/api/status');
+    if (status.model && status.model.status !== 'ready') modelReady = false;
+  } catch {}
+
+  const softLockHtml = !modelReady ? `
+    <div class="summary-locked-notice">
+      <div class="summary-locked-icon">📝</div>
+      <div class="summary-locked-text">
+        <strong>Daily Summary needs Gemma 4 to generate.</strong><br>
+        Download a model in <a href="#" onclick="navigate('chat');return false" style="color:var(--accent)">Chat</a> or <a href="#" onclick="navigate('settings');return false" style="color:var(--accent)">Settings</a> to enable AI summaries.
+        Cached summaries from previous sessions are still shown below.
+      </div>
+    </div>` : '';
+
   el.innerHTML = `
+    ${softLockHtml}
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
       <input type="date" id="summary-date" value="${currentDate}">
       <span class="hint-trigger" id="summary-hint-trigger" style="display:none" title="">?</span>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
       <div class="card">
-        <div class="card-header"><span class="card-title">📝 Daily Summary</span><button class="btn btn-primary btn-sm" id="gen-summary">Generate</button></div>
+        <div class="card-header"><span class="card-title">📝 Daily Summary</span><button class="btn btn-primary btn-sm" id="gen-summary" ${!modelReady ? 'disabled style="opacity:0.4;cursor:not-allowed"' : ''}>Generate</button></div>
         <div id="summary-body"><div style="color:var(--text-muted)">Click Generate for an AI-powered daily summary.</div></div>
       </div>
       <div class="card">
-        <div class="card-header"><span class="card-title">📋 Standup Notes</span><button class="btn btn-primary btn-sm" id="gen-standup">Generate</button></div>
+        <div class="card-header"><span class="card-title">📋 Standup Notes</span><button class="btn btn-primary btn-sm" id="gen-standup" ${!modelReady ? 'disabled style="opacity:0.4;cursor:not-allowed"' : ''}>Generate</button></div>
         <div id="standup-body"><div style="color:var(--text-muted)">Click Generate for standup meeting notes.</div></div>
       </div>
     </div>`;
@@ -883,8 +930,7 @@ async function renderSummary(el) {
     const mdata = await api('/api/models');
     if (!mdata.is_top_model) {
       const t = document.getElementById('summary-hint-trigger');
-      t.style.display = 'inline-flex';
-      t.title = `Using ${mdata.active}. Upgrade to a larger model in Settings for better summaries.`;
+      if (t) { t.style.display = 'inline-flex'; t.title = `Using ${mdata.active}. Upgrade to a larger model in Settings for better summaries.`; }
     }
   } catch {}
   $('#summary-date').addEventListener('change', e => { currentDate = e.target.value; loadExistingSummary(); });
@@ -924,6 +970,11 @@ let chatHistory = [];  // {role: 'user'|'assistant', content: string}
 let chatBusy = false;
 let chatContextRange = 'today'; // 'today' | '7d' | '30d' | 'all'
 
+// Model state — updated by pollStatus()
+let _modelStatus = 'ready'; // no_model | downloading | starting | ready | error
+let _modelDownload = null;   // download state object when active
+let _chatWasLocked = false;  // track previous lock state for auto-unlock
+
 async function renderChat(el) {
   el.innerHTML = `
     <div class="chat-container" id="chat-root">
@@ -952,7 +1003,7 @@ async function renderChat(el) {
           </div>
         </div>
       </div>
-      <div class="chat-input-bar">
+      <div class="chat-input-bar" id="chat-input-bar">
         <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
         <button class="chat-send" id="chat-send" onclick="submitChat()">➤</button>
       </div>
@@ -970,18 +1021,226 @@ async function renderChat(el) {
   $('#chat-input').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitChat(); }
   });
-  $('#chat-input').focus();
 
-  // Hover tooltip hint (non-intrusive)
+  // Check model status and show lock or normal state
   try {
-    const mdata = await api('/api/models');
-    if (!mdata.is_top_model) {
-      const t = document.getElementById('chat-hint-trigger');
-      t.style.display = 'inline-flex';
-      t.title = `Using ${mdata.active}. Upgrade to a larger model in Settings for better results.`;
+    const status = await api('/api/status');
+    if (status.model) {
+      _modelStatus = status.model.status;
+      _modelDownload = status.model.download;
     }
   } catch {}
+
+  _updateChatLockState();
+
+  if (_modelStatus === 'ready') {
+    $('#chat-input').focus();
+    // Hover tooltip hint (non-intrusive)
+    try {
+      const mdata = await api('/api/models');
+      if (!mdata.is_top_model) {
+        const t = document.getElementById('chat-hint-trigger');
+        if (t) { t.style.display = 'inline-flex'; t.title = `Using ${mdata.active}. Upgrade to a larger model in Settings for better results.`; }
+      }
+    } catch {}
+  }
 }
+
+function _updateChatLockState() {
+  const messagesEl = document.getElementById('chat-messages');
+  const inputBar = document.getElementById('chat-input-bar');
+  if (!messagesEl || !inputBar) return;
+
+  if (_modelStatus === 'ready') {
+    // Unlocked — restore normal chat if was locked
+    const lockEl = document.getElementById('chat-locked');
+    if (lockEl) {
+      lockEl.remove();
+      inputBar.classList.remove('disabled');
+      const chatInput = document.getElementById('chat-input');
+      if (chatInput) { chatInput.placeholder = 'Type a message...'; chatInput.disabled = false; }
+      const sendBtn = document.getElementById('chat-send');
+      if (sendBtn) sendBtn.disabled = false;
+      // Restore welcome if no messages
+      if (!chatHistory.length && !messagesEl.querySelector('.chat-msg')) {
+        messagesEl.innerHTML = `
+          <div class="chat-welcome" id="chat-welcome">
+            <div class="chat-welcome-icon">🧠</div>
+            <h3>Hey! I'm ScreenMind</h3>
+            <p>Chat with me about anything — or ask about your screen activity.</p>
+            <div class="chat-suggestions">
+              <button class="chat-suggest" onclick="chatSuggestion('What did aachii say?')">💬 What did aachii say?</button>
+              <button class="chat-suggest" onclick="chatSuggestion('Tell me a joke')">😄 Tell me a joke</button>
+              <button class="chat-suggest" onclick="chatSuggestion('What tabs do I have open?')">🔍 Open tabs?</button>
+            </div>
+          </div>`;
+      }
+    }
+    _chatWasLocked = false;
+    return;
+  }
+
+  // Locked — show lock screen
+  _chatWasLocked = true;
+  inputBar.classList.add('disabled');
+  const chatInput = document.getElementById('chat-input');
+  if (chatInput) { chatInput.placeholder = 'Download a model to start chatting...'; chatInput.disabled = true; }
+  const sendBtn = document.getElementById('chat-send');
+  if (sendBtn) sendBtn.disabled = true;
+
+  let lockEl = document.getElementById('chat-locked');
+  if (!lockEl) {
+    // Remove welcome/messages and insert lock
+    messagesEl.innerHTML = '';
+    lockEl = document.createElement('div');
+    lockEl.className = 'chat-locked';
+    lockEl.id = 'chat-locked';
+    messagesEl.appendChild(lockEl);
+  }
+
+  // Build lock content based on state
+  if (_modelStatus === 'downloading') {
+    const bytes = _modelDownload ? _modelDownload.downloaded_bytes || 0 : 0;
+    const bytesStr = bytes > 1024*1024*1024 ? (bytes/(1024*1024*1024)).toFixed(1) + ' GB'
+                   : bytes > 1024*1024 ? Math.round(bytes/(1024*1024)) + ' MB'
+                   : bytes > 1024 ? Math.round(bytes/1024) + ' KB' : bytes + ' B';
+    const modelName = _modelDownload ? _modelDownload.model : '';
+    lockEl.innerHTML = `
+      <div class="chat-locked-icon">🧠⏳</div>
+      <h3 class="chat-locked-title">Downloading my brain...</h3>
+      <p class="chat-locked-desc">Hang tight! I'm downloading ${modelName || 'the model'} so I can think.</p>
+      <div class="chat-locked-progress">
+        <div class="chat-locked-progress-label">📦 ${bytesStr} downloaded</div>
+        <div class="chat-locked-progress-bar"><div class="chat-locked-progress-fill"></div></div>
+      </div>
+      <div class="chat-locked-hint">✓ Chat unlocks automatically once ready!</div>`;
+  } else if (_modelStatus === 'starting') {
+    lockEl.innerHTML = `
+      <div class="chat-locked-icon">🧠⚡</div>
+      <h3 class="chat-locked-title">Booting up my brain...</h3>
+      <p class="chat-locked-desc">Model downloaded! Starting the server — this takes 30-60 seconds.</p>
+      <div class="spinner" style="margin:12px auto"></div>
+      <div class="chat-locked-hint">✓ Almost there!</div>`;
+  } else if (_modelStatus === 'error') {
+    lockEl.innerHTML = `
+      <div class="chat-locked-icon">🧠🔌</div>
+      <h3 class="chat-locked-title">Something went wrong</h3>
+      <p class="chat-locked-desc">Model is downloaded but the server couldn't start. Check GPU/VRAM or try restarting ScreenMind.</p>
+      <button class="btn btn-primary" onclick="retryModelStart()" style="margin-top:8px">🔄 Retry</button>`;
+  } else {
+    // no_model — show download cards
+    lockEl.innerHTML = `
+      <div class="chat-locked-icon">🧠💤</div>
+      <h3 class="chat-locked-title">I need my brain to think!</h3>
+      <p class="chat-locked-desc">Download a model to unlock chat, search analysis, and AI features.</p>
+      <div class="chat-locked-models" id="chat-locked-models">
+        <div class="spinner" style="margin:8px auto"></div>
+      </div>
+      <div class="chat-locked-hint">✓ Chat unlocks automatically once downloaded!</div>`;
+    // Load models list
+    _loadLockScreenModels();
+  }
+}
+
+async function _loadLockScreenModels() {
+  const container = document.getElementById('chat-locked-models');
+  if (!container) return;
+  try {
+    const data = await api('/api/models');
+    const models = data.models || [];
+    const dl = await api('/api/models/download-progress');
+    container.innerHTML = models.map(m => {
+      const isDownloading = dl.active && dl.model === m.key;
+      const isDownloaded = m.status === 'downloaded' || m.status === 'active';
+      let actionHtml = '';
+      if (isDownloading) {
+        actionHtml = '<span style="font-size:0.75rem;color:var(--accent)">Downloading...</span>';
+      } else if (dl.active) {
+        actionHtml = '<button class="btn btn-ghost btn-sm" disabled>Busy</button>';
+      } else if (isDownloaded) {
+        actionHtml = '<button class="btn btn-primary btn-sm" onclick="lockScreenSwitchModel(\'' + m.key + '\')">Use</button>';
+      } else {
+        actionHtml = '<button class="btn btn-primary btn-sm" onclick="lockScreenDownload(\'' + m.key + '\')">Download</button>';
+      }
+      return `
+        <div class="chat-locked-model-card">
+          <div class="chat-locked-model-info">
+            <div class="chat-locked-model-name">${m.name} ${m.tier >= 2 ? '⭐' : ''}</div>
+            <div class="chat-locked-model-meta">${m.size} params · ${m.vram} VRAM · ${m.quality}</div>
+          </div>
+          <div>${actionHtml}</div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem;text-align:center">Could not load models</div>';
+  }
+}
+
+window.lockScreenDownload = async function(key) {
+  // Optimistic UI update
+  _modelStatus = 'downloading';
+  _modelDownload = { model: key, downloaded_bytes: 0, message: 'Starting download...' };
+  _updateChatLockState();
+
+  try {
+    const res = await fetch('/api/models/pull', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }),
+    });
+
+    if (res.status === 409) {
+      // Another download is already in progress — revert optimistic state
+      const j = await res.json();
+      showToast(j.error || 'Download already in progress', 'warning');
+      // Re-sync immediately from server, don't wait 5s (#9)
+      try {
+        const status = await api('/api/status');
+        if (status.model) {
+          _modelStatus = status.model.status;
+          _modelDownload = status.model.download;
+          _updateChatLockState();
+        }
+      } catch {}
+    } else if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      showToast(j.error || 'Download failed to start', 'warning');
+      _modelStatus = 'no_model';
+      _modelDownload = null;
+      _updateChatLockState();
+    }
+    // 202 — success, pollStatus will pick up the downloading state
+  } catch (e) {
+    showToast('Failed to start download: ' + e.message, 'warning');
+    _modelStatus = 'no_model';
+    _modelDownload = null;
+    _updateChatLockState();
+  }
+};
+
+window.lockScreenSwitchModel = async function(key) {
+  try {
+    await fetch('/api/models/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }),
+    });
+    showToast('Switching model...', 'info');
+  } catch (e) {
+    showToast('Failed to switch: ' + e.message, 'warning');
+  }
+};
+
+window.retryModelStart = async function() {
+  showToast('Retrying server start...', 'info');
+  try {
+    // Use dedicated restart endpoint — guarantees a real restart (#5)
+    await fetch('/api/models/restart', { method: 'POST' });
+    // pollStatus will pick up the transition
+  } catch (e) {
+    showToast('Retry failed: ' + e.message, 'warning');
+  }
+};
 
 function _escapeHtml(text) {
   const div = document.createElement('div');
@@ -2177,51 +2436,37 @@ async function loadModels() {
 let _pullAbort = null;
 
 window.installModel = async function(tag) {
-  // Confirmation dialog
-  if (!confirm(`Download and activate ${tag}?\nThis will download the model via Ollama. Continue?`)) return;
+  // Check if a download is already in progress
+  try {
+    const dl = await api('/api/models/download-progress');
+    if (dl.active) {
+      showToast(`Download already in progress: ${dl.model}`, 'warning');
+      return;
+    }
+  } catch {}
+
+  if (!confirm(`Download and activate ${tag}?\nThis will download the model and start the server. Continue?`)) return;
 
   const btn = event.target;
   btn.disabled = true;
-  btn.textContent = 'Cancel';
-  btn.classList.add('btn-downloading');
-  btn.disabled = false;
-
-  // Allow cancel via abort controller
-  _pullAbort = new AbortController();
-  let cancelled = false;
-
-  btn.onclick = function() {
-    if (_pullAbort) { _pullAbort.abort(); cancelled = true; }
-    btn.textContent = 'Cancelling...';
-    btn.disabled = true;
-  };
+  btn.textContent = 'Downloading...';
 
   try {
-    await fetch('/api/models/pull', {
+    const r = await fetch('/api/models/pull', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tag }),
-      signal: _pullAbort.signal,
     });
-    if (!cancelled) {
-      // Auto-switch after install
-      await fetch('/api/models/switch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tag }),
-      });
+    const data = await r.json();
+    if (r.ok) {
       showToast(`${tag} installed and activated!`, 'success');
+    } else {
+      showToast(data.error || 'Download failed', 'warning');
     }
     loadModels();
   } catch (e) {
-    if (cancelled || e.name === 'AbortError') {
-      showToast(`Download cancelled`, 'warning');
-    } else {
-      showToast(`Failed to install ${tag}`, 'warning');
-    }
+    showToast(`Failed to install ${tag}`, 'warning');
     loadModels();
-  } finally {
-    _pullAbort = null;
   }
 };
 

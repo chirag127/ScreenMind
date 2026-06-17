@@ -96,20 +96,31 @@ async def main():
         print("=" * 70)
     print()
 
+    # ── llama-server setup ─────────────────────────────────────────────
+    # Check if llama-server binary is available; offer to install if missing
+    from setup_llama import ensure_llama_server
+    llama_binary_available = ensure_llama_server()
+
     # ── Health checks ────────────────────────────────────────────────
-    # Auto-start llama-server if not already running
     from engine import model_manager
-    if not check_llama_server():
-        print("[Main] llama-server not running — starting automatically...")
-        llm_server_ok = model_manager.start_server(settings.active_model)
+    if llama_binary_available:
+        # Binary exists — check if server is running, start if not
+        if not check_llama_server():
+            print("[Main] llama-server not running — starting automatically...")
+            llm_server_ok = model_manager.start_server(settings.active_model)
+        else:
+            llm_server_ok = True
     else:
-        llm_server_ok = True
+        llm_server_ok = False
+
     check_disk_space()
     if not llm_server_ok:
         print()
         print("[Main] WARN - Starting without Gemma 4 -- screenshots will be captured")
         print("[Main]   but NOT analyzed until llama-server is available.")
         print("[Main]   The dashboard and API will still work with existing data.")
+        if not llama_binary_available:
+            print("[Main]   Run 'python setup_llama.py' to install llama-server.")
         print()
     print()
 

@@ -1,6 +1,6 @@
 """Model management routes — list, download, switch models via model_manager."""
 
-import asyncio
+import threading
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -28,7 +28,12 @@ async def list_models():
 
 @router.post("/pull")
 async def pull_model(request: Request):
-    """Download a model GGUF from HuggingFace."""
+    """
+    Start downloading a model GGUF, then auto-switch and start server.
+
+    Returns 202 immediately — work runs in a background thread.
+    Frontend polls /api/status to track progress. (#1)
+    """
     body = await request.json()
     key = body.get("tag", "") or body.get("key", "")
 
@@ -36,16 +41,28 @@ async def pull_model(request: Request):
     if not info:
         return JSONResponse({"error": "Unknown model"}, status_code=400)
 
-    print(f"[Models] Downloading {info['name']}...")
-    success = await asyncio.get_event_loop().run_in_executor(
-        None, lambda: model_manager.download_model(key)
-    )
+    # Check if download/lifecycle is already in progress (single-flight)
+    dl_state = model_manager.get_download_state()
+    if dl_state["active"]:
+        return JSONResponse(
+            {"error": f"Download already in progress: {dl_state['model']}"},
+            status_code=409,
+        )
 
-    if success:
-        print(f"[Models] Download complete: {info['name']}")
-        return {"status": "downloaded", "key": key}
-    else:
-        return JSONResponse({"error": "Download failed"}, status_code=500)
+    # Fire-and-forget in a background thread — do NOT block the event loop (#1)
+    threading.Thread(
+        target=model_manager.download_and_start,
+        args=(key,),
+        daemon=True,
+    ).start()
+
+    return JSONResponse({"status": "started", "key": key}, status_code=202)
+
+
+@router.get("/download-progress")
+async def download_progress():
+    """Get current download state for frontend polling."""
+    return model_manager.get_download_state()
 
 
 @router.post("/switch")
@@ -58,12 +75,25 @@ async def switch_model(request: Request):
     if not info:
         return JSONResponse({"error": "Unknown model"}, status_code=400)
 
-    success = await asyncio.get_event_loop().run_in_executor(
-        None, lambda: model_manager.switch_model(key)
-    )
+    # Run in background thread to avoid blocking (#1 pattern)
+    threading.Thread(
+        target=model_manager.switch_model,
+        args=(key,),
+        daemon=True,
+    ).start()
 
-    if success:
-        print(f"[Models] Switched to: {info['name']}")
-        return {"status": "switched", "active": key}
-    else:
-        return JSONResponse({"error": "Failed to switch model"}, status_code=500)
+    return JSONResponse({"status": "switching", "key": key}, status_code=202)
+
+
+@router.post("/restart")
+async def restart_model_server():
+    """
+    Force-restart the server with the current active model.
+    Used by the Retry button — guarantees a real restart regardless of active key. (#5)
+    """
+    threading.Thread(
+        target=model_manager.restart_server,
+        daemon=True,
+    ).start()
+
+    return JSONResponse({"status": "restarting"}, status_code=202)
