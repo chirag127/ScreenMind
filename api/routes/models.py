@@ -75,6 +75,14 @@ async def switch_model(request: Request):
     if not info:
         return JSONResponse({"error": "Unknown model"}, status_code=400)
 
+    # Refuse if a lifecycle is already in progress (single-flight)
+    dl_state = model_manager.get_download_state()
+    if dl_state["active"]:
+        return JSONResponse(
+            {"error": f"Lifecycle in progress: {dl_state['model']}"},
+            status_code=409,
+        )
+
     # Run in background thread to avoid blocking (#1 pattern)
     threading.Thread(
         target=model_manager.switch_model,
@@ -97,3 +105,12 @@ async def restart_model_server():
     ).start()
 
     return JSONResponse({"status": "restarting"}, status_code=202)
+
+
+@router.post("/cancel")
+async def cancel_download():
+    """Cancel an active model download."""
+    cancelled = model_manager.cancel_download()
+    if cancelled:
+        return JSONResponse({"status": "cancelled"})
+    return JSONResponse({"error": "No active download to cancel"}, status_code=400)

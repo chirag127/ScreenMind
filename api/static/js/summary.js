@@ -1,18 +1,36 @@
 //  SUMMARY & STANDUP VIEW
 // ══════════════════════════════════════════════════════════
 async function renderSummary(el) {
+  // Check model status for soft lock
+  let modelReady = true;
+  try {
+    const status = await api('/api/status');
+    if (status.model && status.model.status !== 'ready') modelReady = false;
+  } catch {}
+
+  const softLockHtml = !modelReady ? `
+    <div class="summary-locked-notice">
+      <div class="summary-locked-icon">📝</div>
+      <div class="summary-locked-text">
+        <strong>Daily Summary needs Gemma 4 to generate.</strong><br>
+        <a href="#" onclick="openModelHub();return false" style="color:var(--accent)">Open Model Hub</a> to download a model.
+        Cached summaries from previous sessions are still shown below.
+      </div>
+    </div>` : '';
+
   el.innerHTML = `
+    ${softLockHtml}
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
       <input type="date" id="summary-date" value="${currentDate}">
       <span class="hint-trigger" id="summary-hint-trigger" style="display:none" title="">?</span>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
       <div class="card">
-        <div class="card-header"><span class="card-title">📝 Daily Summary</span><button class="btn btn-primary btn-sm" id="gen-summary">Generate</button></div>
+        <div class="card-header"><span class="card-title">📝 Daily Summary</span><button class="btn btn-primary btn-sm" id="gen-summary" ${!modelReady ? 'disabled style="opacity:0.4;cursor:not-allowed"' : ''}>Generate</button></div>
         <div id="summary-body"><div style="color:var(--text-muted)">Click Generate for an AI-powered daily summary.</div></div>
       </div>
       <div class="card">
-        <div class="card-header"><span class="card-title">📋 Standup Notes</span><button class="btn btn-primary btn-sm" id="gen-standup">Generate</button></div>
+        <div class="card-header"><span class="card-title">📋 Standup Notes</span><button class="btn btn-primary btn-sm" id="gen-standup" ${!modelReady ? 'disabled style="opacity:0.4;cursor:not-allowed"' : ''}>Generate</button></div>
         <div id="standup-body"><div style="color:var(--text-muted)">Click Generate for standup meeting notes.</div></div>
       </div>
     </div>`;

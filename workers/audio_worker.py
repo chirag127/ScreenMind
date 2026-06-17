@@ -264,6 +264,13 @@ class AudioWorker:
 
     def _start_meeting(self, app_name: str):
         """Begin recording a meeting session."""
+        # Guard: don't record if active model can't transcribe audio
+        from engine import model_manager
+        if not model_manager.is_audio_capable():
+            print(f"[AudioWorker] Meeting detected ({app_name}) but active model "
+                  f"has no audio encoder — skipping recording")
+            return
+
         self._in_meeting = True
         self._meeting_app = app_name
         self._session_start = datetime.now()

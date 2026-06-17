@@ -186,6 +186,13 @@ function navigate(view) {
   currentView = view;
   window.location.hash = view;
 
+  // Close Model Hub overlay on navigation (#7 — prevent weird state)
+  closeModelHub();
+
+  // Show/hide timeline pill (only visible on Timeline)
+  const pill = document.getElementById('mh-timeline-pill');
+  if (pill) pill.style.display = view === 'timeline' ? '' : 'none';
+
   // Update nav
   const btns = $$('.nav-item');
   btns.forEach(n => n.classList.toggle('active', n.dataset.view === view));
@@ -271,33 +278,22 @@ async function pollStatus() {
       if (pauseBtn) { pauseBtn.classList.remove('paused'); pauseIcon.textContent = '\u23f8'; pauseLabel.textContent = 'Stop Capturing'; }
     }
 
-    // ── Model state tracking ──
+    // ── Model state tracking (unified _modelState) ──
     if (s.model) {
-      const prev = _modelStatus;
-      _modelStatus = s.model.status; // no_model | downloading | starting | ready | error
-      _modelDownload = s.model.download;
+      const prev = _modelState.status;
+      _modelState.status = s.model.status;
+      _modelState.activeModel = s.model.active_model;
+      _modelState.modelDownloaded = s.model.model_downloaded;
+      _modelState.download = s.model.download;
+      _modelState.message = s.model.message || '';
 
-      // Update chat lock screen if it exists
-      _updateChatLockState();
-
-      // Auto-unlock: transition from non-ready → ready
-      if (prev !== 'ready' && _modelStatus === 'ready') {
+      // Auto-unlock toast: transition from non-ready → ready (fires once)
+      if (prev !== 'ready' && _modelState.status === 'ready') {
         showToast('🎉 Model ready! Chat is now available.', 'success');
-        _updateChatLockState();
       }
 
-      // Nav badge: show warning dot on Chat nav when model not ready
-      const chatNav = document.querySelector('[data-view="chat"] .nav-badge-warning');
-      if (_modelStatus === 'ready') {
-        if (chatNav) chatNav.remove();
-      } else {
-        const chatNavItem = document.querySelector('[data-view="chat"]');
-        if (chatNavItem && !chatNavItem.querySelector('.nav-badge-warning')) {
-          const badge = document.createElement('span');
-          badge.className = 'nav-badge-warning';
-          chatNavItem.appendChild(badge);
-        }
-      }
+      // Fan out to all model UI surfaces
+      _updateModelUI();
     }
   } catch { $('#status-text').textContent = 'Offline'; $('#status-dot').className = 'status-dot error'; }
 }
@@ -346,6 +342,10 @@ async function renderTimeline(el) {
   $('#next-day').addEventListener('click', () => shiftDate(1));
   $('#clear-timeline').addEventListener('click', confirmClearTimeline);
   loadTimeline();
+
+  // Inject Model Hub pill into header-actions (guard against duplicates — Fix #5)
+  _injectTimelinePill();
+
   // Auto-refresh timeline every 30s
   if (window._tlRefresh) clearInterval(window._tlRefresh);
   window._tlRefresh = setInterval(() => { if (currentView === 'timeline') loadTimeline(true); }, 30000);
@@ -903,7 +903,7 @@ async function renderSummary(el) {
       <div class="summary-locked-icon">📝</div>
       <div class="summary-locked-text">
         <strong>Daily Summary needs Gemma 4 to generate.</strong><br>
-        Download a model in <a href="#" onclick="navigate('chat');return false" style="color:var(--accent)">Chat</a> or <a href="#" onclick="navigate('settings');return false" style="color:var(--accent)">Settings</a> to enable AI summaries.
+        <a href="#" onclick="openModelHub();return false" style="color:var(--accent)">Open Model Hub</a> to download a model.
         Cached summaries from previous sessions are still shown below.
       </div>
     </div>` : '';
@@ -970,10 +970,16 @@ let chatHistory = [];  // {role: 'user'|'assistant', content: string}
 let chatBusy = false;
 let chatContextRange = 'today'; // 'today' | '7d' | '30d' | 'all'
 
-// Model state — updated by pollStatus()
-let _modelStatus = 'ready'; // no_model | downloading | starting | ready | error
-let _modelDownload = null;   // download state object when active
-let _chatWasLocked = false;  // track previous lock state for auto-unlock
+// ── Unified Model State (Fix #1 — single source of truth) ──
+const _modelState = {
+  status: 'ready',        // no_model | downloading | starting | ready | error
+  activeModel: null,
+  modelDownloaded: false,
+  download: null,          // { model, downloaded_bytes, message }
+  message: '',
+  models: [],              // populated when overlay opens
+};
+let _chatWasLocked = false;
 
 async function renderChat(el) {
   el.innerHTML = `
@@ -1026,14 +1032,17 @@ async function renderChat(el) {
   try {
     const status = await api('/api/status');
     if (status.model) {
-      _modelStatus = status.model.status;
-      _modelDownload = status.model.download;
+      _modelState.status = status.model.status;
+      _modelState.activeModel = status.model.active_model;
+      _modelState.modelDownloaded = status.model.model_downloaded;
+      _modelState.download = status.model.download;
+      _modelState.message = status.model.message || '';
     }
   } catch {}
 
   _updateChatLockState();
 
-  if (_modelStatus === 'ready') {
+  if (_modelState.status === 'ready') {
     $('#chat-input').focus();
     // Hover tooltip hint (non-intrusive)
     try {
@@ -1051,7 +1060,7 @@ function _updateChatLockState() {
   const inputBar = document.getElementById('chat-input-bar');
   if (!messagesEl || !inputBar) return;
 
-  if (_modelStatus === 'ready') {
+  if (_modelState.status === 'ready') {
     // Unlocked — restore normal chat if was locked
     const lockEl = document.getElementById('chat-locked');
     if (lockEl) {
@@ -1080,7 +1089,7 @@ function _updateChatLockState() {
     return;
   }
 
-  // Locked — show lock screen
+  // Locked — show witty message only (no download cards — those are in Model Hub)
   _chatWasLocked = true;
   inputBar.classList.add('disabled');
   const chatInput = document.getElementById('chat-input');
@@ -1090,7 +1099,6 @@ function _updateChatLockState() {
 
   let lockEl = document.getElementById('chat-locked');
   if (!lockEl) {
-    // Remove welcome/messages and insert lock
     messagesEl.innerHTML = '';
     lockEl = document.createElement('div');
     lockEl.className = 'chat-locked';
@@ -1098,89 +1106,235 @@ function _updateChatLockState() {
     messagesEl.appendChild(lockEl);
   }
 
-  // Build lock content based on state
-  if (_modelStatus === 'downloading') {
-    const bytes = _modelDownload ? _modelDownload.downloaded_bytes || 0 : 0;
-    const bytesStr = bytes > 1024*1024*1024 ? (bytes/(1024*1024*1024)).toFixed(1) + ' GB'
-                   : bytes > 1024*1024 ? Math.round(bytes/(1024*1024)) + ' MB'
-                   : bytes > 1024 ? Math.round(bytes/1024) + ' KB' : bytes + ' B';
-    const modelName = _modelDownload ? _modelDownload.model : '';
+  // Witty messages based on state — link to Model Hub overlay
+  if (_modelState.status === 'downloading') {
     lockEl.innerHTML = `
       <div class="chat-locked-icon">🧠⏳</div>
       <h3 class="chat-locked-title">Downloading my brain...</h3>
-      <p class="chat-locked-desc">Hang tight! I'm downloading ${modelName || 'the model'} so I can think.</p>
-      <div class="chat-locked-progress">
-        <div class="chat-locked-progress-label">📦 ${bytesStr} downloaded</div>
-        <div class="chat-locked-progress-bar"><div class="chat-locked-progress-fill"></div></div>
-      </div>
+      <p class="chat-locked-desc">Hang tight! I'm getting my neural pathways wired up.</p>
+      <a href="#" onclick="openModelHub();return false" style="color:var(--accent);font-size:0.85rem">Open Model Hub</a> to see progress
       <div class="chat-locked-hint">✓ Chat unlocks automatically once ready!</div>`;
-  } else if (_modelStatus === 'starting') {
+  } else if (_modelState.status === 'starting') {
     lockEl.innerHTML = `
       <div class="chat-locked-icon">🧠⚡</div>
       <h3 class="chat-locked-title">Booting up my brain...</h3>
       <p class="chat-locked-desc">Model downloaded! Starting the server — this takes 30-60 seconds.</p>
       <div class="spinner" style="margin:12px auto"></div>
       <div class="chat-locked-hint">✓ Almost there!</div>`;
-  } else if (_modelStatus === 'error') {
+  } else if (_modelState.status === 'error') {
     lockEl.innerHTML = `
       <div class="chat-locked-icon">🧠🔌</div>
       <h3 class="chat-locked-title">Something went wrong</h3>
-      <p class="chat-locked-desc">Model is downloaded but the server couldn't start. Check GPU/VRAM or try restarting ScreenMind.</p>
-      <button class="btn btn-primary" onclick="retryModelStart()" style="margin-top:8px">🔄 Retry</button>`;
+      <p class="chat-locked-desc">${_modelState.message || 'Server couldn\'t start. Check GPU/VRAM.'}</p>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
+        <a href="#" onclick="openModelHub();return false" style="color:var(--accent);font-size:0.85rem">Open Model Hub</a>
+        <button class="btn btn-primary btn-sm" onclick="retryModelStart()">🔄 Retry</button>
+      </div>`;
   } else {
-    // no_model — show download cards
+    // no_model
     lockEl.innerHTML = `
       <div class="chat-locked-icon">🧠💤</div>
       <h3 class="chat-locked-title">I need my brain to think!</h3>
       <p class="chat-locked-desc">Download a model to unlock chat, search analysis, and AI features.</p>
-      <div class="chat-locked-models" id="chat-locked-models">
-        <div class="spinner" style="margin:8px auto"></div>
-      </div>
+      <button class="btn btn-primary" onclick="openModelHub()" style="margin-top:12px">Open Model Hub</button>
       <div class="chat-locked-hint">✓ Chat unlocks automatically once downloaded!</div>`;
-    // Load models list
-    _loadLockScreenModels();
   }
 }
 
-async function _loadLockScreenModels() {
-  const container = document.getElementById('chat-locked-models');
+window.retryModelStart = async function() {
+  showToast('Retrying server start...', 'info');
+  try {
+    await fetch('/api/models/restart', { method: 'POST' });
+  } catch (e) {
+    showToast('Retry failed: ' + e.message, 'warning');
+  }
+};
+
+// ══════════════════════════════════════════════════════════
+//  MODEL HUB OVERLAY
+// ══════════════════════════════════════════════════════════
+
+// Named Escape handler — add on open, remove on close (Fix #3)
+function _modelHubEscHandler(e) {
+  if (e.key === 'Escape') closeModelHub();
+}
+
+window.openModelHub = async function() {
+  const overlay = document.getElementById('mh-overlay');
+  if (!overlay) return;
+  overlay.classList.add('visible');
+  document.addEventListener('keydown', _modelHubEscHandler);
+  // Fetch models list and render cards (full DOM build on open)
+  await _renderModelHubCards();
+  _updateModelHubFooter();
+};
+
+window.closeModelHub = function() {
+  const overlay = document.getElementById('mh-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('visible');
+  document.removeEventListener('keydown', _modelHubEscHandler);
+};
+
+async function _renderModelHubCards() {
+  const container = document.getElementById('mh-cards');
   if (!container) return;
   try {
     const data = await api('/api/models');
-    const models = data.models || [];
-    const dl = await api('/api/models/download-progress');
-    container.innerHTML = models.map(m => {
-      const isDownloading = dl.active && dl.model === m.key;
-      const isDownloaded = m.status === 'downloaded' || m.status === 'active';
-      let actionHtml = '';
-      if (isDownloading) {
-        actionHtml = '<span style="font-size:0.75rem;color:var(--accent)">Downloading...</span>';
-      } else if (dl.active) {
-        actionHtml = '<button class="btn btn-ghost btn-sm" disabled>Busy</button>';
-      } else if (isDownloaded) {
-        actionHtml = '<button class="btn btn-primary btn-sm" onclick="lockScreenSwitchModel(\'' + m.key + '\')">Use</button>';
-      } else {
-        actionHtml = '<button class="btn btn-primary btn-sm" onclick="lockScreenDownload(\'' + m.key + '\')">Download</button>';
-      }
-      return `
-        <div class="chat-locked-model-card">
-          <div class="chat-locked-model-info">
-            <div class="chat-locked-model-name">${m.name} ${m.tier >= 2 ? '⭐' : ''}</div>
-            <div class="chat-locked-model-meta">${m.size} params · ${m.vram} VRAM · ${m.quality}</div>
+    _modelState.models = data.models || [];
+  } catch {
+    container.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px">Could not load models</div>';
+    return;
+  }
+
+  const isLifecycleActive = ['downloading', 'starting'].includes(_modelState.status);
+
+  container.innerHTML = _modelState.models.map((m, i) => {
+    const isActive = m.status === 'active';
+    const isDownloaded = m.status === 'downloaded';
+    const isDownloading = isLifecycleActive && _modelState.download && _modelState.download.model === m.key;
+
+    // Badge
+    let badgeHtml;
+    if (isActive) badgeHtml = '<span class="mh-badge mh-badge-active">✓ Active</span>';
+    else if (isDownloading) badgeHtml = '<span class="mh-badge mh-badge-downloading">Downloading...</span>';
+    else if (isDownloaded) badgeHtml = '<span class="mh-badge mh-badge-downloaded">Downloaded</span>';
+    else badgeHtml = '<span class="mh-badge mh-badge-notinstalled">Not Installed</span>';
+
+    // Action button
+    let actionHtml = '';
+    if (isActive) {
+      actionHtml = ''; // Already in use
+    } else if (isDownloading) {
+      actionHtml = ''; // Progress shown below
+    } else if (isLifecycleActive) {
+      actionHtml = '<button class="mh-action-btn" disabled>Busy</button>'; // Fix #7
+    } else if (isDownloaded) {
+      actionHtml = `<button class="mh-action-btn mh-btn-switch" data-model-key="${m.key}" onclick="hubSwitchModel('${m.key}')">Switch</button>`;
+    } else {
+      actionHtml = `<button class="mh-action-btn mh-btn-download" data-model-key="${m.key}" onclick="hubDownloadModel('${m.key}')">Download</button>`;
+    }
+
+    // Progress bar (only for downloading model)
+    let progressHtml = '';
+    if (isDownloading) {
+      const bytes = _modelState.download ? _modelState.download.downloaded_bytes || 0 : 0;
+      const bytesStr = _formatBytes(bytes);
+      progressHtml = `
+        <div class="mh-progress mh-progress-indeterminate" data-progress-key="${m.key}">
+          <div class="mh-progress-bar"><div class="mh-progress-fill"></div></div>
+          <div class="mh-progress-text">
+            <span class="mh-progress-bytes">📦 ${bytesStr} downloaded</span>
+            <span>✓ Auto-unlocks when ready</span>
+          </div>
+        </div>`;
+    }
+
+    const cardClass = isActive ? 'mh-card mh-card-active' : isDownloading ? 'mh-card mh-card-downloading' : 'mh-card';
+
+    return `
+      <div class="${cardClass}" data-model-key="${m.key}" style="animation-delay:${i * 0.08}s">
+        <div class="mh-card-top">
+          <div class="mh-card-info">
+            <div class="mh-card-name">${m.name} ${m.tier >= 2 ? '⭐' : ''} ${badgeHtml}</div>
+            <div class="mh-card-meta">${m.size} params · ${m.vram} VRAM · ${m.quality}</div>
           </div>
           <div>${actionHtml}</div>
-        </div>`;
-    }).join('');
-  } catch (e) {
-    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem;text-align:center">Could not load models</div>';
+        </div>
+        <div class="mh-card-caps">
+          ${m.audio ? '<span class="mh-card-cap">🔊 Audio</span>' : ''}
+          ${m.vision ? '<span class="mh-card-cap">👁 Vision</span>' : ''}
+        </div>
+        ${progressHtml}
+      </div>`;
+  }).join('');
+}
+
+// In-place updates for overlay when open (Fix #2 — no innerHTML rebuild)
+function _updateModelHubOverlay() {
+  const overlay = document.getElementById('mh-overlay');
+  if (!overlay || !overlay.classList.contains('visible')) return;
+
+  const isLifecycleActive = ['downloading', 'starting'].includes(_modelState.status);
+
+  _modelState.models.forEach(m => {
+    const card = overlay.querySelector(`[data-model-key="${m.key}"].mh-card`);
+    if (!card) return;
+
+    const isDownloading = isLifecycleActive && _modelState.download && _modelState.download.model === m.key;
+    const isActive = m.status === 'active';
+
+    // Update card highlight class
+    card.classList.toggle('mh-card-active', isActive);
+    card.classList.toggle('mh-card-downloading', isDownloading);
+
+    // Update badge in-place
+    const badge = card.querySelector('.mh-badge');
+    if (badge) {
+      if (isActive) { badge.className = 'mh-badge mh-badge-active'; badge.textContent = '✓ Active'; }
+      else if (isDownloading) { badge.className = 'mh-badge mh-badge-downloading'; badge.textContent = 'Downloading...'; }
+      else if (m.status === 'downloaded') { badge.className = 'mh-badge mh-badge-downloaded'; badge.textContent = 'Downloaded'; }
+      else { badge.className = 'mh-badge mh-badge-notinstalled'; badge.textContent = 'Not Installed'; }
+    }
+
+    // Update action button state (Fix #7 — disable during lifecycle)
+    const btn = card.querySelector('.mh-action-btn');
+    if (btn && !isActive) {
+      if (isLifecycleActive && !isDownloading) {
+        btn.disabled = true;
+        btn.textContent = 'Busy';
+      } else if (!isDownloading) {
+        btn.disabled = false;
+        btn.textContent = m.status === 'downloaded' ? 'Switch' : 'Download';
+      }
+    }
+
+    // Update download progress in-place
+    if (isDownloading) {
+      const bytesEl = card.querySelector('.mh-progress-bytes');
+      if (bytesEl) {
+        const bytes = _modelState.download ? _modelState.download.downloaded_bytes || 0 : 0;
+        bytesEl.textContent = '📦 ' + _formatBytes(bytes) + ' downloaded';
+      }
+    }
+  });
+
+  _updateModelHubFooter();
+}
+
+function _updateModelHubFooter() {
+  const footer = document.getElementById('mh-footer');
+  if (!footer) return;
+  const dot = footer.querySelector('.mh-footer-dot');
+  const text = footer.querySelector('.mh-footer-text');
+  if (!dot || !text) return;
+
+  const st = _modelState;
+  if (st.status === 'ready') {
+    const info = st.models.find(m => m.key === st.activeModel);
+    const name = info ? info.name : (st.activeModel || 'Unknown');
+    dot.className = 'mh-footer-dot mh-dot-ready';
+    text.innerHTML = 'Running · ' + name + ' loaded';
+  } else if (st.status === 'starting') {
+    dot.className = 'mh-footer-dot mh-dot-starting';
+    text.innerHTML = 'Starting server...';
+  } else if (st.status === 'error') {
+    dot.className = 'mh-footer-dot mh-dot-error';
+    text.innerHTML = 'Server stopped · <a onclick="retryModelStart()">Retry</a>';
+  } else if (st.status === 'downloading') {
+    dot.className = 'mh-footer-dot mh-dot-download';
+    text.innerHTML = 'Downloading...';
+  } else {
+    dot.className = 'mh-footer-dot mh-dot-nomodel';
+    text.innerHTML = 'No model installed';
   }
 }
 
-window.lockScreenDownload = async function(key) {
+window.hubDownloadModel = async function(key) {
   // Optimistic UI update
-  _modelStatus = 'downloading';
-  _modelDownload = { model: key, downloaded_bytes: 0, message: 'Starting download...' };
-  _updateChatLockState();
+  _modelState.status = 'downloading';
+  _modelState.download = { model: key, downloaded_bytes: 0, message: 'Starting download...' };
+  _updateModelUI();
 
   try {
     const res = await fetch('/api/models/pull', {
@@ -1188,37 +1342,35 @@ window.lockScreenDownload = async function(key) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key }),
     });
-
     if (res.status === 409) {
-      // Another download is already in progress — revert optimistic state
       const j = await res.json();
       showToast(j.error || 'Download already in progress', 'warning');
-      // Re-sync immediately from server, don't wait 5s (#9)
+      // Re-sync from server
       try {
         const status = await api('/api/status');
         if (status.model) {
-          _modelStatus = status.model.status;
-          _modelDownload = status.model.download;
-          _updateChatLockState();
+          _modelState.status = status.model.status;
+          _modelState.download = status.model.download;
+          _modelState.message = status.model.message || '';
+          _updateModelUI();
         }
       } catch {}
     } else if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       showToast(j.error || 'Download failed to start', 'warning');
-      _modelStatus = 'no_model';
-      _modelDownload = null;
-      _updateChatLockState();
+      _modelState.status = 'no_model';
+      _modelState.download = null;
+      _updateModelUI();
     }
-    // 202 — success, pollStatus will pick up the downloading state
   } catch (e) {
     showToast('Failed to start download: ' + e.message, 'warning');
-    _modelStatus = 'no_model';
-    _modelDownload = null;
-    _updateChatLockState();
+    _modelState.status = 'no_model';
+    _modelState.download = null;
+    _updateModelUI();
   }
 };
 
-window.lockScreenSwitchModel = async function(key) {
+window.hubSwitchModel = async function(key) {
   try {
     await fetch('/api/models/switch', {
       method: 'POST',
@@ -1226,21 +1378,91 @@ window.lockScreenSwitchModel = async function(key) {
       body: JSON.stringify({ key }),
     });
     showToast('Switching model...', 'info');
+    _modelState.status = 'starting';
+    _updateModelUI();
   } catch (e) {
     showToast('Failed to switch: ' + e.message, 'warning');
   }
 };
 
-window.retryModelStart = async function() {
-  showToast('Retrying server start...', 'info');
-  try {
-    // Use dedicated restart endpoint — guarantees a real restart (#5)
-    await fetch('/api/models/restart', { method: 'POST' });
-    // pollStatus will pick up the transition
-  } catch (e) {
-    showToast('Retry failed: ' + e.message, 'warning');
+function _formatBytes(bytes) {
+  if (bytes > 1024*1024*1024) return (bytes/(1024*1024*1024)).toFixed(1) + ' GB';
+  if (bytes > 1024*1024) return Math.round(bytes/(1024*1024)) + ' MB';
+  if (bytes > 1024) return Math.round(bytes/1024) + ' KB';
+  return bytes + ' B';
+}
+
+// ── Timeline Pill ─────────────────────────────────────────
+function _injectTimelinePill() {
+  // Guard against duplicate injection (Fix #5)
+  if (document.getElementById('mh-timeline-pill')) return;
+  const headerActions = document.getElementById('header-actions');
+  if (!headerActions) return;
+
+  const pill = document.createElement('button');
+  pill.id = 'mh-timeline-pill';
+  pill.className = 'mh-trigger';
+  pill.onclick = function() { openModelHub(); };
+  pill.innerHTML = '<span class="mh-trigger-icon">🧠</span><span class="mh-trigger-text">Model Hub</span><span class="mh-trigger-dot mh-dot-ready"></span>';
+  headerActions.appendChild(pill);
+
+  // Set initial state
+  _updateTimelinePill();
+}
+
+function _updateTimelinePill() {
+  const pill = document.getElementById('mh-timeline-pill');
+  if (!pill) return;
+
+  const textEl = pill.querySelector('.mh-trigger-text');
+  const dotEl = pill.querySelector('.mh-trigger-dot');
+  if (!textEl || !dotEl) return;
+
+  const st = _modelState;
+  if (st.status === 'ready') {
+    const info = st.models.find(m => m.key === st.activeModel);
+    textEl.textContent = info ? info.name : (st.activeModel || 'Model Hub');
+    dotEl.className = 'mh-trigger-dot mh-dot-ready';
+  } else if (st.status === 'downloading') {
+    textEl.textContent = 'Downloading...';
+    dotEl.className = 'mh-trigger-dot mh-dot-download';
+  } else if (st.status === 'starting') {
+    textEl.textContent = 'Starting...';
+    dotEl.className = 'mh-trigger-dot mh-dot-starting';
+  } else if (st.status === 'error') {
+    textEl.textContent = 'Error';
+    dotEl.className = 'mh-trigger-dot mh-dot-error';
+  } else {
+    textEl.textContent = 'No Model';
+    dotEl.className = 'mh-trigger-dot mh-dot-nomodel';
   }
-};
+}
+
+// ── Unified Model UI Dispatcher ───────────────────────────
+function _updateModelUI() {
+  _updateChatLockState();
+  _updateModelHubOverlay();
+  _updateTimelinePill();
+
+  // Nav badge: warning dot on Chat when model not ready
+  const chatNav = document.querySelector('[data-view="chat"] .nav-badge-warning');
+  if (_modelState.status === 'ready') {
+    if (chatNav) chatNav.remove();
+  } else {
+    const chatNavItem = document.querySelector('[data-view="chat"]');
+    if (chatNavItem && !chatNavItem.querySelector('.nav-badge-warning')) {
+      const badge = document.createElement('span');
+      badge.className = 'nav-badge-warning';
+      chatNavItem.appendChild(badge);
+    }
+  }
+
+  // Settings model list — update if Settings is the active view
+  if (currentView === 'settings') {
+    const modelList = document.getElementById('model-list');
+    if (modelList && typeof loadModels === 'function') loadModels();
+  }
+}
 
 function _escapeHtml(text) {
   const div = document.createElement('div');

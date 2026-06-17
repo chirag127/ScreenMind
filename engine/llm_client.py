@@ -176,7 +176,19 @@ def transcribe_audio(
         audio_format: Audio format (wav, mp3, etc.)
         temperature: Sampling temperature
         max_tokens: Max response tokens
+
+    Raises:
+        ValueError: If the active model doesn't support audio input.
     """
+    # Guard: check if active model supports audio
+    from engine import model_manager
+    if not model_manager.is_audio_capable():
+        active = model_manager.get_active_model() or "unknown"
+        raise ValueError(
+            f"Model '{active}' does not support audio input. "
+            f"Switch to Gemma 4 E2B or E4B for voice memo and meeting transcription."
+        )
+
     b64_audio = base64.b64encode(audio_bytes).decode()
 
     messages = [{

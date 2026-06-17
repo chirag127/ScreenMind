@@ -155,7 +155,8 @@ class TestTranscribeAudio:
     """Tests for transcribe_audio()."""
 
     @patch("engine.llm_client.chat")
-    def test_sends_audio_as_input_audio(self, mock_chat):
+    @patch("engine.model_manager.is_audio_capable", return_value=True)
+    def test_sends_audio_as_input_audio(self, _cap, mock_chat):
         """Audio bytes are sent as input_audio type."""
         mock_chat.return_value = "Hello world"
         result = transcribe_audio(b"fake wav bytes")
@@ -165,6 +166,13 @@ class TestTranscribeAudio:
         audio_part = [p for p in user_content if p["type"] == "input_audio"]
         assert len(audio_part) == 1
         assert audio_part[0]["input_audio"]["format"] == "wav"
+
+    @patch("engine.model_manager.is_audio_capable", return_value=False)
+    @patch("engine.model_manager.get_active_model", return_value="gemma-3-12b")
+    def test_raises_on_non_audio_model(self, _get, _cap):
+        """transcribe_audio raises ValueError when model doesn't support audio."""
+        with pytest.raises(ValueError, match="does not support audio"):
+            transcribe_audio(b"fake wav bytes")
 
 
 class TestGenerate:

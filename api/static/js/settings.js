@@ -245,19 +245,45 @@ async function loadModels() {
   try {
     const data = await api('/api/models');
     const models = data.models || [];
+    // Sync to global state so overlay stays in sync
+    if (typeof _modelState !== 'undefined') _modelState.models = models;
+
+    const isLifecycleActive = typeof _modelState !== 'undefined'
+      && ['downloading', 'starting'].includes(_modelState.status);
+    const dlModel = typeof _modelState !== 'undefined' && _modelState.download
+      ? _modelState.download.model : null;
+
     listEl.innerHTML = models.map(m => {
-      const statusBadge = m.status === 'active'
+      const isActive = m.status === 'active';
+      const isDownloaded = m.status === 'downloaded';
+      const isDownloading = isLifecycleActive && dlModel === m.key;
+
+      const statusBadge = isActive
         ? '<span class="model-badge model-active">✓ Active</span>'
-        : m.status === 'downloaded'
+        : isDownloading
+        ? '<span class="model-badge" style="background:rgba(139,92,246,0.15);color:var(--accent)">Downloading...</span>'
+        : isDownloaded
         ? '<span class="model-badge model-downloaded">Downloaded</span>'
         : '<span class="model-badge model-not-installed">Not Installed</span>';
-      const actionBtn = m.status === 'active'
-        ? ''
-        : m.status === 'downloaded'
-        ? `<button class="btn-sm btn-switch" onclick="switchModel('${m.tag}')">Switch</button>`
-        : `<button class="btn-sm btn-install" onclick="installModel('${m.tag}')">Install & Use</button>`;
+
+      let actionBtn = '';
+      if (isActive) {
+        actionBtn = ''; // Already in use
+      } else if (isDownloading) {
+        // Show progress + cancel
+        const bytes = _modelState.download ? _modelState.download.downloaded_bytes || 0 : 0;
+        const bytesStr = typeof _formatBytes === 'function' ? _formatBytes(bytes) : bytes + ' B';
+        actionBtn = '<span style="font-size:0.75rem;color:var(--accent)">' + bytesStr + '</span> <button class="btn-sm" onclick="hubCancelDownload()" style="color:#f87171;border-color:rgba(239,68,68,0.3);margin-left:6px">Cancel</button>';
+      } else if (isLifecycleActive) {
+        actionBtn = '<button class="btn-sm" disabled style="opacity:0.4;cursor:not-allowed">Busy</button>';
+      } else if (isDownloaded) {
+        actionBtn = `<button class="btn-sm btn-switch" onclick="switchModel('${m.key}')">Switch</button>`;
+      } else {
+        actionBtn = `<button class="btn-sm btn-install" onclick="installModel('${m.key}')">Install & Use</button>`;
+      }
+
       return `
-        <div class="model-row ${m.status === 'active' ? 'model-row-active' : ''}">
+        <div class="model-row ${isActive ? 'model-row-active' : ''} ${isDownloading ? 'model-row-downloading' : ''}">
           <div class="model-info">
             <div class="model-name">${m.name} ${statusBadge}</div>
             <div class="model-meta">${m.size} params · ${m.vram} VRAM · ${m.quality}</div>
@@ -273,6 +299,8 @@ async function loadModels() {
 let _pullAbort = null;
 
 window.installModel = async function(tag) {
+  // Audio capability check (shared with overlay)
+  if (typeof _confirmAudioLoss === 'function' && !_confirmAudioLoss(tag)) return;
   // Confirmation dialog
   if (!confirm(`Download and activate ${tag}?\nThis will download the model via Ollama. Continue?`)) return;
 
@@ -322,6 +350,8 @@ window.installModel = async function(tag) {
 };
 
 window.switchModel = async function(tag) {
+  // Audio capability check (shared with overlay)
+  if (typeof _confirmAudioLoss === 'function' && !_confirmAudioLoss(tag)) return;
   try {
     await fetch('/api/models/switch', {
       method: 'POST',
@@ -518,7 +548,7 @@ function _initApp() {
   });
   navigate(initialView);
   pollStatus();
-  setInterval(pollStatus, 15000);
+  _setPollInterval(15000); // adaptive: core.js switches to 5s during downloads
 }
 
 // Wait for auth check before initializing app

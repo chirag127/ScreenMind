@@ -4,7 +4,22 @@
 
 async function renderMemos(el) {
   var memosDate = currentDate;
+
+  // Check if current model supports audio
+  const memoAudioWarning = (_modelState.capabilities && !_modelState.capabilities.audio && _modelState.status === 'ready')
+    ? `<div class="summary-locked-notice" style="margin-bottom:16px">
+        <div class="summary-locked-icon">🎤</div>
+        <div class="summary-locked-text">
+          <strong>Current model doesn't support audio.</strong><br>
+          Voice memo transcription requires Gemma 4 E2B/E4B.
+          <a href="#" onclick="openModelHub();return false" style="color:var(--accent)">Switch model</a> to record new memos.
+          Existing memos are still playable.
+        </div>
+      </div>`
+    : '';
+
   el.innerHTML = `
+    ${memoAudioWarning}
     <div class="date-nav" style="margin-bottom:20px">
       <button class="btn btn-ghost btn-sm" id="memo-prev">◀</button>
       <input type="date" id="memo-date" value="${memosDate}">

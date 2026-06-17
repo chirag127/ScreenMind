@@ -32,7 +32,7 @@ async function renderChat(el) {
           </div>
         </div>
       </div>
-      <div class="chat-input-bar">
+      <div class="chat-input-bar" id="chat-input-bar">
         <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
         <button class="chat-send" id="chat-send" onclick="submitChat()">➤</button>
       </div>
@@ -50,17 +50,120 @@ async function renderChat(el) {
   $('#chat-input').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitChat(); }
   });
-  $('#chat-input').focus();
 
-  // Hover tooltip hint (non-intrusive)
+  // Check model status on initial render
   try {
-    const mdata = await api('/api/models');
-    if (!mdata.is_top_model) {
-      const t = document.getElementById('chat-hint-trigger');
-      t.style.display = 'inline-flex';
-      t.title = `Using ${mdata.active}. Upgrade to a larger model in Settings for better results.`;
+    const status = await api('/api/status');
+    if (status.model) {
+      _modelState.status = status.model.status;
+      _modelState.activeModel = status.model.active_model;
+      _modelState.modelDownloaded = status.model.model_downloaded;
+      _modelState.download = status.model.download;
+      _modelState.message = status.model.message || '';
     }
   } catch {}
+
+  _updateChatLockState();
+
+  if (_modelState.status === 'ready') {
+    $('#chat-input').focus();
+    // Hover tooltip hint (non-intrusive)
+    try {
+      const mdata = await api('/api/models');
+      if (!mdata.is_top_model) {
+        const t = document.getElementById('chat-hint-trigger');
+        if (t) { t.style.display = 'inline-flex'; t.title = `Using ${mdata.active}. Upgrade to a larger model in Settings for better results.`; }
+      }
+    } catch {}
+  }
+}
+
+let _chatWasLocked = false;
+
+function _updateChatLockState() {
+  const messagesEl = document.getElementById('chat-messages');
+  const inputBar = document.getElementById('chat-input-bar');
+  if (!messagesEl || !inputBar) return;
+
+  if (_modelState.status === 'ready') {
+    const lockEl = document.getElementById('chat-locked');
+    if (lockEl) {
+      lockEl.remove();
+      inputBar.classList.remove('disabled');
+      const chatInput = document.getElementById('chat-input');
+      if (chatInput) { chatInput.placeholder = 'Type a message...'; chatInput.disabled = false; }
+      const sendBtn = document.getElementById('chat-send');
+      if (sendBtn) sendBtn.disabled = false;
+      if (!chatHistory.length && !messagesEl.querySelector('.chat-msg')) {
+        messagesEl.innerHTML = `
+          <div class="chat-welcome" id="chat-welcome">
+            <div class="chat-welcome-icon">🧠</div>
+            <h3>Hey! I'm ScreenMind</h3>
+            <p>Chat with me about anything — or ask about your screen activity.</p>
+            <div class="chat-suggestions">
+              <button class="chat-suggest" onclick="chatSuggestion('What did aachii say?')">💬 What did aachii say?</button>
+              <button class="chat-suggest" onclick="chatSuggestion('Tell me a joke')">😄 Tell me a joke</button>
+              <button class="chat-suggest" onclick="chatSuggestion('What tabs do I have open?')">🔍 Open tabs?</button>
+            </div>
+          </div>`;
+      }
+    }
+    _chatWasLocked = false;
+    return;
+  }
+
+  // Locked — show witty message + Model Hub link only
+  _chatWasLocked = true;
+  inputBar.classList.add('disabled');
+  const chatInput = document.getElementById('chat-input');
+  if (chatInput) { chatInput.placeholder = 'Download a model to start chatting...'; chatInput.disabled = true; }
+  const sendBtn = document.getElementById('chat-send');
+  if (sendBtn) sendBtn.disabled = true;
+
+  let lockEl = document.getElementById('chat-locked');
+  if (!lockEl) {
+    messagesEl.innerHTML = '';
+    lockEl = document.createElement('div');
+    lockEl.className = 'chat-locked';
+    lockEl.id = 'chat-locked';
+    messagesEl.appendChild(lockEl);
+  }
+
+  if (_modelState.status === 'downloading') {
+    lockEl.innerHTML = `
+      <div class="chat-locked-icon">🧠⏳</div>
+      <h3 class="chat-locked-title">Downloading my brain...</h3>
+      <p class="chat-locked-desc">Hang tight! I'm getting my neural pathways wired up.</p>
+      <div style="display:flex;gap:12px;justify-content:center;align-items:center">
+        <a href="#" onclick="openModelHub();return false" style="color:var(--accent);font-size:0.85rem">Open Model Hub</a>
+        <a href="#" onclick="hubCancelDownload();return false" style="color:#f87171;font-size:0.85rem">Cancel</a>
+      </div>
+      <div class="chat-locked-hint">✓ Chat unlocks automatically once ready!</div>`;
+  } else if (_modelState.status === 'starting') {
+    lockEl.innerHTML = `
+      <div class="chat-locked-icon">🧠⚡</div>
+      <h3 class="chat-locked-title">Booting up my brain...</h3>
+      <p class="chat-locked-desc">Model downloaded! Starting the server — this takes 30-60 seconds.</p>
+      <div class="spinner" style="margin:12px auto"></div>
+      <div class="chat-locked-hint">✓ Almost there!</div>`;
+  } else if (_modelState.status === 'error') {
+    lockEl.innerHTML = `
+      <div class="chat-locked-icon">🧠🔌</div>
+      <h3 class="chat-locked-title">Something went wrong</h3>
+      <p class="chat-locked-desc">${_modelState.message || 'Server couldn\\'t start. Check GPU/VRAM.'}</p>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
+        <a href="#" onclick="openModelHub();return false" style="color:var(--accent);font-size:0.85rem">Open Model Hub</a>
+        <button class="btn btn-primary btn-sm" onclick="retryModelStart()">🔄 Retry</button>
+      </div>`;
+  } else {
+    // no_model
+    lockEl.innerHTML = `
+      <div class="chat-locked-icon">🧠💤</div>
+      <h3 class="chat-locked-title">I need my brain to think!</h3>
+      <p class="chat-locked-desc">Download a model to unlock chat, search analysis, and AI features.</p>
+      <button class="btn btn-primary" onclick="openModelHub()" style="margin-top:12px">Open Model Hub</button>
+      <div class="chat-locked-hint">✓ Chat unlocks automatically once downloaded!</div>`;
+  }
 }
 
 function _escapeHtml(text) {

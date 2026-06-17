@@ -3,7 +3,21 @@
 var meetingsDate = new Date().toISOString().split('T')[0];
 
 async function renderMeetings(el) {
+  // Check if current model supports audio
+  const audioWarning = (_modelState.capabilities && !_modelState.capabilities.audio && _modelState.status === 'ready')
+    ? `<div class="summary-locked-notice" style="margin-bottom:16px">
+        <div class="summary-locked-icon">🎙️</div>
+        <div class="summary-locked-text">
+          <strong>Current model doesn't support audio.</strong><br>
+          Meeting transcription requires Gemma 4 E2B/E4B.
+          <a href="#" onclick="openModelHub();return false" style="color:var(--accent)">Switch model</a> to enable audio features.
+          Existing meetings are still viewable.
+        </div>
+      </div>`
+    : '';
+
   el.innerHTML = `
+    ${audioWarning}
     <div class="date-nav" style="margin-bottom:20px">
       <button class="btn btn-ghost btn-sm" id="mtg-prev">◀</button>
       <input type="date" id="mtg-date" value="${meetingsDate}">

@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -41,6 +42,42 @@ AVAILABLE_MODELS = [
         "audio": True,
         "vision": True,
     },
+    {
+        "key": "gemma-3-4b",
+        "name": "Gemma 3 4B",
+        "size": "4B",
+        "vram": "~5 GB",
+        "quality": "Good",
+        "tier": 1,
+        "hf_repo": "bartowski/gemma-3-4b-it-GGUF",
+        "hf_file": "gemma-3-4b-it-Q4_K_M.gguf",
+        "audio": False,
+        "vision": True,
+    },
+    {
+        "key": "gemma-3-12b",
+        "name": "Gemma 3 12B",
+        "size": "12B",
+        "vram": "~10 GB",
+        "quality": "Excellent",
+        "tier": 3,
+        "hf_repo": "bartowski/gemma-3-12b-it-GGUF",
+        "hf_file": "gemma-3-12b-it-Q4_K_M.gguf",
+        "audio": False,
+        "vision": True,
+    },
+    {
+        "key": "gemma-3-27b",
+        "name": "Gemma 3 27B",
+        "size": "27B",
+        "vram": "~20 GB",
+        "quality": "Best",
+        "tier": 4,
+        "hf_repo": "bartowski/gemma-3-27b-it-GGUF",
+        "hf_file": "gemma-3-27b-it-Q4_K_M.gguf",
+        "audio": False,
+        "vision": True,
+    },
 ]
 
 
@@ -51,7 +88,8 @@ _active_model_key: Optional[str] = None
 
 # Download state — single-flight + thread-safe reads/writes
 _download_lock = threading.Lock()      # guards the entire download→start lifecycle
-_download_state_lock = threading.Lock()  # guards state dict reads/writes
+_download_state_lock = threading.Lock()  # guards state dict + cancel flag reads/writes
+_cancel_download_flag = False  # cancel signal for active download (guarded by _download_state_lock)
 _download_state: dict = {
     "active": False,
     "model": None,
@@ -81,11 +119,21 @@ def _clear_error_state() -> None:
         _set_download_state(status="idle", message="")
 
 
-def get_models_dir() -> Path:
-    """Get the directory where GGUF models are cached."""
-    d = settings.data_path / "models"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+def cancel_download() -> bool:
+    """
+    Request cancellation of an active download.
+    The download thread checks this flag every ~2s and kills the subprocess.
+    Returns True if a download was active and cancel was requested.
+    """
+    global _cancel_download_flag
+    with _download_state_lock:
+        dl = dict(_download_state)
+        if dl["active"] and dl["status"] == "downloading":
+            _cancel_download_flag = True
+            print("[ModelManager] Cancel requested")
+            return True
+    return False
+
 
 
 def get_model_info(key: str) -> Optional[dict]:
@@ -94,6 +142,22 @@ def get_model_info(key: str) -> Optional[dict]:
         if m["key"] == key:
             return m
     return None
+
+
+def is_audio_capable(key: Optional[str] = None) -> bool:
+    """Check if the given (or active) model supports audio input."""
+    k = key or get_active_model() or settings.active_model
+    info = get_model_info(k)
+    return info.get("audio", False) if info else False
+
+
+def get_active_capabilities() -> dict:
+    """Get capability flags for the active model."""
+    k = get_active_model() or settings.active_model
+    info = get_model_info(k)
+    if not info:
+        return {"audio": False, "vision": False}
+    return {"audio": info.get("audio", False), "vision": info.get("vision", False)}
 
 
 def list_models() -> list:
@@ -152,15 +216,39 @@ def is_model_downloaded(key: str) -> bool:
     return False
 
 
+def _cleanup_incomplete_cache(hf_repo: str) -> None:
+    """Remove .incomplete files from a killed HF download to avoid disk waste."""
+    try:
+        cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+        repo_slug = hf_repo.replace("/", "--")
+        model_cache = cache_dir / f"models--{repo_slug}"
+        if model_cache.exists():
+            removed = 0
+            for p in model_cache.rglob("*.incomplete"):
+                try:
+                    p.unlink()
+                    removed += 1
+                except OSError:
+                    pass
+            if removed:
+                print(f"[ModelManager] Cleaned up {removed} incomplete file(s) for {hf_repo}")
+    except Exception as e:
+        print(f"[ModelManager] Cache cleanup error: {e}")
+
+
 def _do_download(key: str) -> bool:
     """
     Internal: download a model GGUF from HuggingFace.
     Caller must hold _download_lock. Updates _download_state as it progresses.
+    Supports cancellation via _cancel_download_flag.
     """
+    global _cancel_download_flag
     info = get_model_info(key)
     if not info:
         return False
 
+    with _download_state_lock:
+        _cancel_download_flag = False
     _set_download_state(
         active=True, model=key, status="downloading",
         downloaded_bytes=0, message=f"Downloading {info['name']}...",
@@ -172,10 +260,14 @@ def _do_download(key: str) -> bool:
         cmd = [
             sys.executable, "-m", "huggingface_hub", "download",
             info["hf_repo"], info["hf_file"],
-            "--local-dir-use-symlinks", "False",
         ]
 
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # Redirect stdout to DEVNULL (progress is polled from cache-dir size).
+        # Capture stderr to a temp file so we keep error messages without
+        # risking a PIPE deadlock — HF writes progress bars to stderr
+        # continuously, which can fill the 64KB OS pipe buffer and hang.
+        err_file = tempfile.TemporaryFile()
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=err_file)
 
         # Poll for progress while download runs
         cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
@@ -183,7 +275,29 @@ def _do_download(key: str) -> bool:
         model_cache = cache_dir / f"models--{repo_slug}"
 
         while proc.poll() is None:
-            time.sleep(3)
+            # Check cancel flag (under lock for consistency)
+            with _download_state_lock:
+                should_cancel = _cancel_download_flag
+            if should_cancel:
+                print(f"[ModelManager] Download cancelled: {info['name']}")
+                try:
+                    proc.kill()
+                    proc.wait(timeout=10)
+                except Exception:
+                    pass  # Already dead or OS error — fine
+                # Brief sleep for Windows handle release before cleanup
+                time.sleep(0.5)
+                # Clean up .incomplete files to avoid disk waste
+                _cleanup_incomplete_cache(info["hf_repo"])
+                _set_download_state(
+                    active=False, status="idle", model="",
+                    downloaded_bytes=0, message="Download cancelled",
+                )
+                with _download_state_lock:
+                    _cancel_download_flag = False
+                return False
+
+            time.sleep(2)  # 2s check interval (faster cancel response)
             total_bytes = 0
             try:
                 if model_cache.exists():
@@ -200,17 +314,25 @@ def _do_download(key: str) -> bool:
             _set_download_state(downloaded_bytes=max(cur, total_bytes),
                                 message=f"Downloading {info['name']}...")
 
+
         if proc.returncode == 0:
             print(f"[ModelManager] Download complete: {info['name']}")
+            err_file.close()
             return True
         else:
-            stderr = (proc.stderr.read() or b"").decode()[:200]
+            err_file.seek(0)
+            stderr = err_file.read().decode(errors="replace")[:200]
+            err_file.close()
             print(f"[ModelManager] Download failed: {stderr}")
             _set_download_state(status="error", message=f"Download failed: {stderr[:100]}")
             return False
     except Exception as e:
         print(f"[ModelManager] Download error: {e}")
         _set_download_state(status="error", message=f"Error: {str(e)[:100]}")
+        try:
+            err_file.close()
+        except Exception:
+            pass
         return False
 
 
@@ -356,13 +478,37 @@ def stop_server():
 
 
 def switch_model(key: str) -> bool:
-    """Switch to a different model (restarts server)."""
+    """
+    Switch to a different model (restarts server).
+    Respects _download_lock: refuses if a download lifecycle is active,
+    and prevents concurrent switches from racing each other.
+    Sets transient 'starting' state so UI shows "Booting up..." instead of "error".
+    """
     info = get_model_info(key)
     if not info:
         return False
-    _clear_error_state()
-    settings.save_runtime_overrides({"active_model": key})
-    return start_server(key)
+    if not is_model_downloaded(key):
+        print(f"[ModelManager] Cannot switch to {key} — not downloaded")
+        return False
+    if not _download_lock.acquire(blocking=False):
+        print("[ModelManager] Lifecycle in progress, switch ignored")
+        return False
+    try:
+        _clear_error_state()
+        _set_download_state(
+            active=True, model=key, status="starting",
+            downloaded_bytes=0, message=f"Switching to {info['name']}...",
+        )
+        settings.save_runtime_overrides({"active_model": key})
+        result = start_server(key)
+        return result
+    finally:
+        _set_download_state(
+            active=False, status="idle" if is_server_running() else "error",
+            model="", downloaded_bytes=0,
+            message="" if is_server_running() else "Server failed to start.",
+        )
+        _download_lock.release()
 
 
 def restart_server() -> bool:
@@ -373,6 +519,7 @@ def restart_server() -> bool:
 
     Respects _download_lock: refuses if a download lifecycle is active,
     and prevents concurrent retries from racing each other.
+    Sets transient 'starting' state so UI shows "Booting up..." instead of "error".
     """
     if not _download_lock.acquire(blocking=False):
         print("[ModelManager] Lifecycle in progress, retry ignored")
@@ -380,9 +527,19 @@ def restart_server() -> bool:
 
     try:
         _clear_error_state()
+        _set_download_state(
+            active=True, model=settings.active_model, status="starting",
+            downloaded_bytes=0, message="Restarting server...",
+        )
         stop_server()
-        return start_server(settings.active_model, timeout=180)
+        result = start_server(settings.active_model, timeout=180)
+        return result
     finally:
+        _set_download_state(
+            active=False, status="idle" if is_server_running() else "error",
+            model="", downloaded_bytes=0,
+            message="" if is_server_running() else "Server failed to start.",
+        )
         _download_lock.release()
 
 
@@ -403,10 +560,12 @@ def get_model_status() -> dict:
     Returns a dict with:
       status: "no_model" | "downloading" | "starting" | "ready" | "error"
       active_model: str | None
+      capabilities: {audio: bool, vision: bool}
       download: dict | None  (download state if active)
     """
     dl = get_download_state()
     active = get_active_model() or settings.active_model
+    caps = get_active_capabilities()
 
     # Check download/lifecycle state first (active=True means lifecycle in progress)
     if dl["active"]:
@@ -414,6 +573,7 @@ def get_model_status() -> dict:
             "status": dl["status"],  # "downloading" or "starting"
             "active_model": active,
             "model_downloaded": is_model_downloaded(active),
+            "capabilities": caps,
             "download": {
                 "model": dl["model"],
                 "downloaded_bytes": dl["downloaded_bytes"],
@@ -428,6 +588,7 @@ def get_model_status() -> dict:
             "status": "error",
             "active_model": active,
             "model_downloaded": is_model_downloaded(active),
+            "capabilities": caps,
             "download": None,
             "message": dl["message"],
         }
@@ -438,6 +599,7 @@ def get_model_status() -> dict:
             "status": "ready",
             "active_model": active,
             "model_downloaded": True,
+            "capabilities": caps,
             "download": None,
         }
 
@@ -447,6 +609,7 @@ def get_model_status() -> dict:
             "status": "error",  # downloaded but server not running
             "active_model": active,
             "model_downloaded": True,
+            "capabilities": caps,
             "download": None,
             "message": "Server not running. Click Retry to restart.",
         }
@@ -458,6 +621,7 @@ def get_model_status() -> dict:
                 "status": "error",
                 "active_model": active,
                 "model_downloaded": True,
+                "capabilities": caps,
                 "download": None,
                 "message": f"Model {m['key']} is downloaded but not active. Switch in Settings.",
             }
@@ -466,6 +630,7 @@ def get_model_status() -> dict:
         "status": "no_model",
         "active_model": active,
         "model_downloaded": False,
+        "capabilities": caps,
         "download": None,
     }
 
@@ -476,12 +641,15 @@ def _check_model_disk_space(key: str) -> bool:
     if not info:
         return True
 
-    # Estimate model size from known info (rough: 2B~1.5GB, 4B~3GB at Q4_K_M)
+    # Estimate GGUF sizes at Q4_K_M quantization
     estimated_sizes = {
         "gemma-4-e2b": 1.5 * 1024**3,
         "gemma-4-e4b": 3.0 * 1024**3,
+        "gemma-3-4b":  2.5 * 1024**3,
+        "gemma-3-12b": 7.5 * 1024**3,
+        "gemma-3-27b": 17.0 * 1024**3,
     }
-    model_size = estimated_sizes.get(key, 2 * 1024**3)  # default 2GB
+    model_size = estimated_sizes.get(key, 5 * 1024**3)  # default 5GB
     headroom = 1 * 1024**3  # 1GB headroom
     required = model_size + headroom
 

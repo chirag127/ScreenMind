@@ -15,6 +15,8 @@ async function renderTimeline(el) {
   $('#next-day').addEventListener('click', () => shiftDate(1));
   $('#clear-timeline').addEventListener('click', confirmClearTimeline);
   loadTimeline();
+  // Inject Model Hub pill into header-actions (guard against duplicates)
+  _injectTimelinePill();
   // Auto-refresh timeline every 30s
   if (window._tlRefresh) clearInterval(window._tlRefresh);
   window._tlRefresh = setInterval(() => { if (currentView === 'timeline') loadTimeline(true); }, 30000);

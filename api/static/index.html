@@ -140,6 +140,25 @@
     </div>
 </div>
 
+<!-- Model Hub Overlay -->
+<div class="mh-overlay" id="mh-overlay" onclick="closeModelHub()">
+  <div class="mh-panel" onclick="event.stopPropagation()">
+    <button class="mh-close" onclick="closeModelHub()">✕</button>
+    <div class="mh-header">
+      <div class="mh-header-icon">🧠</div>
+      <div class="mh-header-title">Model Hub</div>
+      <div class="mh-header-desc">Manage your AI models</div>
+    </div>
+    <div class="mh-cards" id="mh-cards">
+      <div class="spinner" style="margin:20px auto"></div>
+    </div>
+    <div class="mh-footer" id="mh-footer">
+      <span class="mh-footer-dot"></span>
+      <span class="mh-footer-text">Checking status...</span>
+    </div>
+  </div>
+</div>
+
 <!-- Toast Notifications -->
 <div class="toast-container" id="toast-container"></div>
 
