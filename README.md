@@ -444,7 +444,9 @@ All settings configurable via `.env`, environment variables, or the **Settings**
 screenmind/
 ├── main.py                    # Entry point — starts all services
 ├── config.py                  # Pydantic settings (env + runtime overrides)
-├── requirements.txt           # Python dependencies
+├── setup_llama.py             # Auto-detect + install llama-server
+├── requirements.txt           # Full Python dependencies
+├── requirements-test.txt      # Lightweight CI deps (no PyTorch)
 ├── mcp_server.py              # MCP server for Claude/Cursor/VS Code
 ├── screenmind_sdk.py          # SDK for Python plugin agents
 │
@@ -502,6 +504,10 @@ screenmind/
 │   ├── meeting-actions.md
 │   └── code-changelog.md
 │
+├── tests/                     # pytest test suite (25 modules)
+│   ├── conftest.py            # Shared fixtures
+│   └── test_*.py              # Unit + integration tests
+│
 └── docs/
     └── BUILD_YOUR_OWN_AGENT.md
 ```
@@ -540,6 +546,25 @@ The web dashboard at `http://127.0.0.1:7777` features:
 - **Settings** — 8 organized sections: Shortcuts, Capture, AI, Audio, Privacy, Automation, Integrations, Storage
 
 Dark glassmorphism UI. No build step. Instant load.
+
+---
+
+## 🧪 Development
+
+Run the test suite:
+
+```bash
+# Fast (lightweight deps — same as CI, ~2 min install)
+pip install -r requirements-test.txt
+pytest --cov=. --cov-report=term-missing -q
+
+# Full (includes ML models — sentence-transformers, easyocr)
+pip install -r requirements.txt
+pip install pytest pytest-asyncio pytest-cov
+pytest --cov=. --cov-report=term-missing -q
+```
+
+CI runs automatically on push/PR via GitHub Actions using the lightweight deps.
 
 ---
 

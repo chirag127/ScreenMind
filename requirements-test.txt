@@ -1,14 +1,15 @@
-# Lightweight test dependencies — avoids GPU/vision packages that fail in CI.
-# Used by .github/workflows/ci.yml instead of full requirements.txt.
+# Lightweight CI dependencies — skips PyTorch, EasyOCR, and other heavy
+# ML/OS packages that tests mock or skip.  Cuts CI from ~23 min to ~2-3 min.
+# Full deps: requirements.txt
 
-# Core (needed by config, models, API)
+# Core framework (tests import these at module level)
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 pydantic>=2.11.0,<3.0.0
 pydantic-settings==2.7.1
 python-dotenv==1.0.1
 
-# Screen Capture (lightweight — no GPU)
+# Image handling (conftest.sample_image, dedup, capture tests)
 Pillow==11.1.0
 imagehash==4.3.1
 
@@ -16,13 +17,17 @@ imagehash==4.3.1
 httpx==0.28.1
 numpy==2.2.2
 
-# Git Integration
+# Git integration (dev_context tests)
 gitpython==3.1.44
 
-# Encryption
-cryptography==46.0.7
+# Async file I/O (server routes)
+aiofiles==24.1.0
 
-# MCP
+# Encryption tests
+cryptography==46.0.7
+keyring>=25.0
+
+# MCP tests
 mcp[cli]==1.26.0
 
 # Test runner
