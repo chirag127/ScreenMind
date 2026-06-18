@@ -145,16 +145,41 @@ def _pick_asset(assets: list) -> tuple[dict | None, list[dict]]:
             cuda_major = cuda_ver.split(".")[0] if cuda_ver else None
 
             # Search for matching CUDA binary in actual asset list
-            if cuda_major:
-                # Try exact CUDA major version match first
-                # Exclude 'cudart-' prefixed assets — those are runtime DLLs, not the binary
-                for a in assets:
-                    name = a["name"]
-                    if f"bin-win-cuda-{cuda_major}" in name and name.endswith(".zip") and not name.startswith("cudart"):
-                        main_asset = a
-                        break
+            if cuda_ver:
+                # Parse driver CUDA version as tuple for comparison
+                try:
+                    driver_ver = tuple(int(x) for x in cuda_ver.split("."))
+                except (ValueError, TypeError):
+                    driver_ver = None
 
-            # Fallback: pick any CUDA Windows build (prefer highest version)
+                if driver_ver:
+                    # Collect all CUDA binaries with their parsed versions
+                    # Exclude 'cudart-' prefixed assets — those are runtime DLLs, not the binary
+                    cuda_candidates = []
+                    for a in assets:
+                        name = a["name"]
+                        if "bin-win-cuda" not in name or not name.endswith(".zip"):
+                            continue
+                        if name.startswith("cudart"):
+                            continue
+                        # Extract CUDA version from asset name (e.g. "13.3" from "bin-win-cuda-13.3-x64")
+                        import re
+                        m = re.search(r"cuda-(\d+\.\d+)", name)
+                        if m:
+                            try:
+                                asset_ver = tuple(int(x) for x in m.group(1).split("."))
+                            except ValueError:
+                                continue
+                            # Only consider builds that the driver can run (asset ≤ driver)
+                            if asset_ver <= driver_ver:
+                                cuda_candidates.append((asset_ver, a))
+
+                    # Pick highest compatible version
+                    if cuda_candidates:
+                        cuda_candidates.sort(key=lambda x: x[0], reverse=True)
+                        main_asset = cuda_candidates[0][1]
+
+            # Fallback: pick any CUDA Windows build (prefer highest version ≤ driver)
             if not main_asset:
                 cuda_assets = [a for a in assets
                                if "bin-win-cuda" in a["name"] and a["name"].endswith(".zip")
