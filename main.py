@@ -107,7 +107,7 @@ async def main():
         # Binary exists — check if server is running, start if not
         if not check_llama_server():
             print("[Main] llama-server not running — starting automatically...")
-            llm_server_ok = model_manager.start_server(settings.active_model)
+            llm_server_ok = model_manager.start_server(settings.active_model, timeout=120)
         else:
             llm_server_ok = True
     else:
