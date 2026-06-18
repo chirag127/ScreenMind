@@ -147,16 +147,18 @@ def _pick_asset(assets: list) -> tuple[dict | None, list[dict]]:
             # Search for matching CUDA binary in actual asset list
             if cuda_major:
                 # Try exact CUDA major version match first
+                # Exclude 'cudart-' prefixed assets — those are runtime DLLs, not the binary
                 for a in assets:
                     name = a["name"]
-                    if f"bin-win-cuda-{cuda_major}" in name and name.endswith(".zip"):
+                    if f"bin-win-cuda-{cuda_major}" in name and name.endswith(".zip") and not name.startswith("cudart"):
                         main_asset = a
                         break
 
             # Fallback: pick any CUDA Windows build (prefer highest version)
             if not main_asset:
                 cuda_assets = [a for a in assets
-                               if "bin-win-cuda" in a["name"] and a["name"].endswith(".zip")]
+                               if "bin-win-cuda" in a["name"] and a["name"].endswith(".zip")
+                               and not a["name"].startswith("cudart")]
                 if cuda_assets:
                     cuda_assets.sort(key=lambda a: a["name"], reverse=True)
                     main_asset = cuda_assets[0]
