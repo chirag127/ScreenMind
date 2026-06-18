@@ -383,13 +383,11 @@ def start_server(model_key: Optional[str] = None, timeout: int = 60) -> bool:
         port = settings.llama_server_port
 
         # Find llama-server binary: check project's llama/ folder first, then PATH
-        llama_bin = "llama-server"
-        project_bin = Path(__file__).parent.parent / "llama" / "llama-server.exe"
+        bin_name = "llama-server.exe" if sys.platform == "win32" else "llama-server"
+        llama_bin = bin_name
+        project_bin = Path(__file__).parent.parent / "llama" / bin_name
         if project_bin.exists():
             llama_bin = str(project_bin)
-        elif sys.platform == "win32":
-            # Also check without .exe for PATH lookup
-            llama_bin = "llama-server.exe"
 
         cmd = [
             llama_bin,
