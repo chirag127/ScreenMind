@@ -555,6 +555,12 @@ class AgentScheduler:
                 continue
 
             try:
+                # Don't run agents if no model server is available (#10)
+                from engine import model_manager
+                if not model_manager.is_server_running():
+                    time.sleep(60)
+                    continue
+
                 agents = discover_agents()
                 now = time.time()
 

@@ -26,7 +26,7 @@ AVAILABLE_MODELS = [
         "quality": "Good",
         "tier": 1,
         "hf_repo": "unsloth/gemma-4-E2B-it-GGUF",
-        "hf_file": "Q4_K_M.gguf",
+        "hf_file": "gemma-4-E2B-it-Q4_K_M.gguf",
         "audio": True,
         "vision": True,
     },
@@ -38,7 +38,7 @@ AVAILABLE_MODELS = [
         "quality": "Great",
         "tier": 2,
         "hf_repo": "unsloth/gemma-4-E4B-it-GGUF",
-        "hf_file": "Q4_K_M.gguf",
+        "hf_file": "gemma-4-E4B-it-Q4_K_M.gguf",
         "audio": True,
         "vision": True,
     },
@@ -270,7 +270,12 @@ def _do_download(key: str) -> bool:
         # risking a PIPE deadlock — HF writes progress bars to stderr
         # continuously, which can fill the 64KB OS pipe buffer and hang.
         err_file = tempfile.TemporaryFile()
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=err_file)
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,   # prevent hangs from HF auth prompts
+            stdout=subprocess.DEVNULL,
+            stderr=err_file,
+        )
 
         # Poll for progress while download runs
         cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
