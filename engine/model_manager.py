@@ -257,9 +257,12 @@ def _do_download(key: str) -> bool:
     print(f"[ModelManager] Downloading {info['name']} from {info['hf_repo']}...")
 
     try:
+        # Use hf_hub_download() Python API — `python -m huggingface_hub` is NOT
+        # a valid CLI entry point ("is a package and cannot be directly executed").
         cmd = [
-            sys.executable, "-m", "huggingface_hub", "download",
-            info["hf_repo"], info["hf_file"],
+            sys.executable, "-c",
+            "from huggingface_hub import hf_hub_download; "
+            f"hf_hub_download(repo_id='{info['hf_repo']}', filename='{info['hf_file']}')",
         ]
 
         # Redirect stdout to DEVNULL (progress is polled from cache-dir size).
