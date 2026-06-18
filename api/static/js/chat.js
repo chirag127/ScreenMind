@@ -273,20 +273,41 @@ window.submitChat = async function() {
   _showTyping();
 
   try {
+    // Timeout: abort SSE stream if no response within 120s
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question, history: chatHistory.slice(0, -1), context_range: chatContextRange }),
+      signal: controller.signal,
     });
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let finalData = null;
+    let lastEventTime = Date.now();
 
     while (true) {
-      const { done, value } = await reader.read();
+      // Per-chunk timeout: if no data for 60s, the stream is stalled
+      const readPromise = reader.read();
+      const chunkTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Stream stalled')), 60000)
+      );
+
+      let result;
+      try {
+        result = await Promise.race([readPromise, chunkTimeout]);
+      } catch (stall) {
+        reader.cancel();
+        break;
+      }
+
+      const { done, value } = result;
       if (done) break;
+      lastEventTime = Date.now();
       buffer += decoder.decode(value, { stream: true });
 
       const lines = buffer.split('\n');
@@ -312,6 +333,7 @@ window.submitChat = async function() {
       }
     }
 
+    clearTimeout(timeoutId);
     _hideTyping();
 
     if (finalData && finalData.answer) {
@@ -322,7 +344,11 @@ window.submitChat = async function() {
     }
   } catch (err) {
     _hideTyping();
-    _addMessage('assistant', 'Sorry, something went wrong: ' + err.message);
+    if (err.name === 'AbortError') {
+      _addMessage('assistant', 'Request timed out — the model might be busy. Try again in a moment.');
+    } else {
+      _addMessage('assistant', 'Sorry, something went wrong: ' + err.message);
+    }
   }
 
   input.disabled = false;

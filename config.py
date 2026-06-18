@@ -191,7 +191,7 @@ class Settings(BaseSettings):
     auto_bookmark_keywords: str = Field(default="git push,deploy,npm run build,docker,merge,pull request", description="Keywords that trigger auto-bookmark")
 
     # ── Agents ────────────────────────────────────────────────────────────
-    agents_enabled: bool = Field(default=True, description="Enable the agent/plugin system")
+    agents_enabled: bool = Field(default=False, description="Enable the agent/plugin system")
     agents_auto_run_python: bool = Field(default=False, description="Run Python plugins without confirmation (default: ask)")
 
     # ── Privacy & Security ────────────────────────────────────────────────
