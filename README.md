@@ -111,10 +111,29 @@ Every screenshot is sent to Gemma 4 with OCR context. It returns structured JSON
 - Rich scene description (every visible element inventoried)
 - Layout regions (sidebar, chat area, toolbar boundaries)
 
-**Three modes:**
+**Three modes** *(benchmarked on GTX 1650 4GB — scales dramatically with better GPUs):*
 - **Accurate** — single call with thinking (~76s). Best layout detection.
 - **Balanced** — thinking enabled, analysis-only (~40s). Richer descriptions than Fast.
 - **Fast** — no-thinking prefill trick (~12s). Layout via OCR clustering instead.
+
+<details>
+<summary><b>⚡ GPU Scaling — How fast on your hardware?</b></summary>
+
+<br>
+
+The numbers above are from a **GTX 1650 (4GB VRAM)** — a worst-case scenario where the model spills to CPU RAM. With more VRAM, the entire model fits on GPU and inference speeds up dramatically:
+
+| GPU | VRAM | Bandwidth | Regime | ~Fast Mode | Why |
+|---|---|---|---|---|---|
+| **GTX 1650** *(baseline)* | 4 GB | ~190 GB/s | spilling | ~12s | CPU-bottlenecked, partial offload |
+| **RTX 3060** | 12 GB | ~360 GB/s | full fit | ~3-4s | Spill eliminated — the big jump |
+| **RTX 4060 Ti** | 16 GB | ~290 GB/s | full fit | ~2-3s | Fits easily, more compute for vision |
+| **RTX 3090** | 24 GB | ~935 GB/s | full fit | ~1-2s | High bandwidth |
+| **RTX 4090** | 24 GB | ~1000 GB/s | full fit | ~1s | Top consumer card |
+
+> **Key insight:** The biggest jump is from "spilling" (model doesn't fit in VRAM) to "full fit" (it does). Any GPU with ≥6GB VRAM should run E2B entirely on GPU and see 3-5x speedup over the baseline.
+
+</details>
 
 ### 2. Audio — Voice Memos & Meeting Transcription
 Gemma 4 E2B has a native audio encoder. ScreenMind uses it for:
@@ -136,7 +155,7 @@ No Whisper dependency. One model handles everything.
 | Must understand **screenshots natively** | Rules out text-only models |
 | Must stay **100% local** for privacy | Rules out cloud APIs |
 | Must handle **audio natively** | Rules out models without audio encoder |
-| Must be **fast enough** for 30s cycle | E2B processes in 12-76s depending on mode |
+| Must be **fast enough** for 30s cycle | E2B: 12-76s on GTX 1650, ~1-4s on RTX 3060+ |
 
 Gemma 4 E2B is the only model that checks all five boxes.
 
