@@ -50,9 +50,6 @@ async def search_activities(
         params,
     ).fetchall()
 
-    if not rows:
-        return {"query": q, "count": 0, "results": []}
-
     activities_data = []
     embeddings_list = []
 
