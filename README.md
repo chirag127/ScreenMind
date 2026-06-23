@@ -55,7 +55,7 @@
 - **📸 Smart Capture** — Content-change detection, not a fixed timer. Captures when your screen *actually* changes.
 - **🔬 Gemma 4 Vision Analysis** — Every screenshot analyzed: app detection, activity categorization, mood, scene description, spatial layout regions.
 - **🔍 Hybrid Search** — Semantic embeddings (MiniLM) + FTS5 keyword search. Find anything by *meaning*, not just keywords.
-- **💬 Chat with Memory** — Conversational RAG with follow-up support. Ask "what did Ishaa say on Discord?" → get the actual message.
+- **💬 Chat with Memory** — Conversational RAG with follow-up support. Ask "what did Alex say on Discord?" → get the actual message.
 - **🧠 Model Hub** — In-app model download with live progress tracking. Chat and Summary are locked with witty brain animations until the model is ready — then auto-unlock. No terminal needed.
 - **🎙️ Voice Memos** — Hold `Ctrl+Shift+V` → Gemma 4's native audio encoder transcribes. Screenshot captured alongside.
 - **🎤 Meeting Transcription** — Auto-detects Zoom/Teams/Meet, records audio, transcribes, generates structured summaries.
