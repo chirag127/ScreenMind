@@ -14,9 +14,19 @@ Usage:
     text, method = adapter.extract_a11y_text()
 """
 
+import os
 import sys
 
 from platform_support.base import PlatformAdapter
+
+
+def is_wayland() -> bool:
+    """Detect Wayland session. Checks both XDG_SESSION_TYPE and WAYLAND_DISPLAY."""
+    if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
+        return True
+    if os.environ.get("WAYLAND_DISPLAY"):
+        return True
+    return False
 
 
 def get_adapter() -> PlatformAdapter:

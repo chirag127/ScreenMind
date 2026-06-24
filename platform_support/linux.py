@@ -1,20 +1,46 @@
 """
 Linux Platform Adapter
-Uses xdotool/wmctrl for window detection, AT-SPI for accessibility.
+Uses xdotool/wmctrl for window detection on X11.
+On Wayland, uses compositor-specific IPC (swaymsg/hyprctl/niri msg).
+AT-SPI for accessibility on both.
 """
 
+import json
+import os
 import subprocess
+import time
 from typing import Optional, Tuple
 
 from platform_support.base import PlatformAdapter
 
 
+def _is_wayland() -> bool:
+    """Detect Wayland session. Inlined here to avoid importing from the
+    parent package (platform_support/__init__.py), which would create a
+    fragile circular-import hazard if __init__.py ever adds a top-level
+    import of this module."""
+    if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
+        return True
+    if os.environ.get("WAYLAND_DISPLAY"):
+        return True
+    return False
+
+
 class LinuxAdapter(PlatformAdapter):
-    """Linux implementation using xdotool/wmctrl + AT-SPI."""
+    """Linux implementation using xdotool/wmctrl + AT-SPI.
+
+    On Wayland, falls back to compositor IPC for window title/app detection.
+    """
 
     def __init__(self):
         self._atspi_available = False
         self._xdotool_available = False
+        self._compositor = None  # safe default for X11
+        self._is_wayland = _is_wayland()
+        if self._is_wayland:
+            self._compositor = self._detect_compositor()
+        self._cached_focused = None      # {"title": ..., "app": ...}
+        self._cached_focused_ts = 0.0    # timestamp of last fetch
         self._check_tools()
 
     def _check_tools(self):
@@ -42,7 +68,12 @@ class LinuxAdapter(PlatformAdapter):
         return "Linux"
 
     def get_foreground_window_handle(self) -> Optional[int]:
-        """Get the X11 window ID using xdotool."""
+        """Get the X11 window ID using xdotool.
+
+        Note: X11-only. Returns None on Wayland (no equivalent concept —
+        Wayland has no global window IDs). The AT-SPI a11y code ignores
+        this handle anyway (walks desktop for STATE_ACTIVE).
+        """
         if not self._xdotool_available:
             return None
         try:
@@ -57,7 +88,10 @@ class LinuxAdapter(PlatformAdapter):
         return None
 
     def get_active_window_title(self) -> Optional[str]:
-        """Get active window title using xdotool."""
+        """Get active window title. Uses compositor IPC on Wayland, xdotool on X11."""
+        if self._is_wayland:
+            return self._get_wayland_window_info("title")
+
         if not self._xdotool_available:
             return self._get_title_xprop()
 
@@ -71,7 +105,10 @@ class LinuxAdapter(PlatformAdapter):
             return None
 
     def get_active_app_name(self) -> Optional[str]:
-        """Get app name using xdotool getactivewindow getwindowpid + /proc."""
+        """Get app name. Uses compositor IPC on Wayland, xdotool+/proc on X11."""
+        if self._is_wayland:
+            return self._get_wayland_window_info("app")
+
         if not self._xdotool_available:
             title = self.get_active_window_title()
             if title:
@@ -88,7 +125,6 @@ class LinuxAdapter(PlatformAdapter):
             if result.returncode == 0:
                 pid = result.stdout.strip()
                 # Read process name from /proc
-                import os
                 comm_path = f"/proc/{pid}/comm"
                 if os.path.exists(comm_path):
                     with open(comm_path) as f:
@@ -133,6 +169,107 @@ class LinuxAdapter(PlatformAdapter):
         except Exception:
             pass
         return None
+
+    # ── Wayland compositor IPC ───────────────────────────────────────
+
+    def _detect_compositor(self) -> Optional[str]:
+        """Detect which Wayland compositor is running."""
+        if os.environ.get("SWAYSOCK"):
+            return "sway"
+        if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+            return "hyprland"
+        if os.environ.get("NIRI_SOCKET"):
+            return "niri"
+        # GNOME/KDE: no reliable env var that provides window IPC
+        return None
+
+    def _get_wayland_window_info(self, field: str) -> Optional[str]:
+        """Get window title or app name from compositor IPC.
+        Caches the focused node for 1 second to avoid redundant subprocess calls.
+        """
+        now = time.time()
+        if now - self._cached_focused_ts > 1.0:
+            self._cached_focused = self._fetch_focused_window()
+            self._cached_focused_ts = now
+
+        if self._cached_focused:
+            return self._cached_focused.get(field)
+        return None
+
+    def _fetch_focused_window(self) -> Optional[dict]:
+        """Fetch focused window metadata from compositor.
+        Returns {"title": ..., "app": ...} or None.
+        """
+        try:
+            if self._compositor == "sway":
+                return self._sway_focused()
+            elif self._compositor == "hyprland":
+                return self._hyprland_focused()
+            elif self._compositor == "niri":
+                return self._niri_focused()
+        except Exception:
+            pass
+        return None
+
+    def _sway_focused(self) -> Optional[dict]:
+        """Get focused window from swaymsg -t get_tree."""
+        result = subprocess.run(
+            ["swaymsg", "-t", "get_tree"],
+            capture_output=True, text=True, timeout=2
+        )
+        if result.returncode != 0:
+            return None
+
+        tree = json.loads(result.stdout)
+
+        def find_focused(node):
+            if node.get("focused"):
+                return node
+            for child in node.get("nodes", []) + node.get("floating_nodes", []):
+                found = find_focused(child)
+                if found:
+                    return found
+            return None
+
+        focused = find_focused(tree)
+        if focused:
+            return {
+                "title": focused.get("name"),
+                "app": focused.get("app_id") or focused.get("window_properties", {}).get("class"),
+            }
+        return None
+
+    def _hyprland_focused(self) -> Optional[dict]:
+        """Get focused window from hyprctl activewindow -j."""
+        result = subprocess.run(
+            ["hyprctl", "activewindow", "-j"],
+            capture_output=True, text=True, timeout=2
+        )
+        if result.returncode != 0:
+            return None
+
+        data = json.loads(result.stdout)
+        return {
+            "title": data.get("title"),
+            "app": data.get("class") or data.get("initialClass"),
+        }
+
+    def _niri_focused(self) -> Optional[dict]:
+        """Get focused window from niri msg --json focused-window."""
+        result = subprocess.run(
+            ["niri", "msg", "--json", "focused-window"],
+            capture_output=True, text=True, timeout=2
+        )
+        if result.returncode != 0:
+            return None
+
+        data = json.loads(result.stdout)
+        if not data or not isinstance(data, dict):
+            return None
+        return {
+            "title": data.get("title"),
+            "app": data.get("app_id"),
+        }
 
     # ── Accessibility ────────────────────────────────────────────────
 

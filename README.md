@@ -458,8 +458,42 @@ All settings configurable via `.env`, environment variables, or the **Settings**
 | **Backend** | FastAPI + Uvicorn | Async-first, auto-generated API docs |
 | **Database** | SQLite (WAL) + FTS5 | Zero-config, concurrent reads, full-text search |
 | **Capture** | mss + ctypes/UI Automation | Native screen capture + accessibility text extraction |
+| **Wayland Capture** | grim (wlroots) / XDG Portal | Automatic fallback; no X11 dependency on Wayland |
 | **Frontend** | Vanilla JS + CSS | No build step, instant load, dark glassmorphism UI |
-| **Platform** | Windows / macOS / Linux | Abstraction layer with OS-specific adapters |
+| **Platform** | Windows / macOS / Linux (X11 + Wayland) | Abstraction layer with OS-specific adapters |
+
+---
+
+### 🐧 Wayland Support
+
+ScreenMind auto-detects Wayland sessions and uses compositor-native capture:
+
+| Compositor | Capture | Window Detection | Notes |
+|---|---|---|---|
+| **Sway** | ✅ grim | ✅ swaymsg IPC | Full support |
+| **Hyprland** | ✅ grim | ✅ hyprctl IPC | Full support |
+| **Niri** | ✅ grim | ✅ niri msg IPC | Full support |
+| **river / Wayfire / labwc** | ✅ grim | ⚠️ Title only (no IPC) | Capture works, app name may be unavailable |
+| **GNOME (Mutter)** | ⚠️ XDG Portal | ❌ No IPC available | Portal prompts on every capture — not viable for background recording |
+| **KDE (KWin)** | ⚠️ XDG Portal | ❌ No IPC available | Same as GNOME |
+
+**Install grim** (recommended for wlroots compositors):
+```bash
+# Arch
+sudo pacman -S grim
+
+# Ubuntu / Debian (if available)
+sudo apt install grim
+
+# Fedora
+sudo dnf install grim
+```
+
+**GNOME / KDE Wayland**: Best-effort only. Screenshots use the XDG Desktop Portal,
+which prompts for permission on each capture — not viable for continuous background
+recording. For full functionality, use an X11 session or a wlroots-based compositor with grim.
+
+**Optional** (for portal fallback): `python3-gi` / `python-gobject` system package.
 
 ---
 
@@ -479,7 +513,8 @@ screenmind/
 ├── screenmind_sdk.py          # SDK for Python plugin agents
 │
 ├── capture/                   # Screenshot capture layer
-│   ├── screen.py              # mss-based capture + encryption
+│   ├── screen.py              # Capture facade (mss / Wayland backend)
+│   ├── wayland.py             # Wayland backend (grim / XDG Portal)
 │   ├── window.py              # Active window detection
 │   ├── dedup.py               # Perceptual hash deduplication
 │   ├── hotkey.py              # Global hotkeys (bookmark, pause, voice)
