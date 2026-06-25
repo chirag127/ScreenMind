@@ -38,6 +38,219 @@ VALID_CATEGORIES = {
 
 VALID_MOODS = {"productive", "distracted", "collaborative", "learning", "neutral"}
 
+
+# ── App Reconciliation Data ──────────────────────────────────────────────────
+# Three-signal reconciliation: OS process name + window title + Gemma vision.
+# See: https://github.com/ayushh0110/ScreenMind/issues/6
+
+# Process names that are generic wrappers/runtimes — they tell us nothing
+# about the actual application.  When the OS returns one of these, we skip it
+# and fall back to window-title extraction or Gemma's visual guess.
+GENERIC_PROCESS_NAMES = frozenset({
+    # Language runtimes
+    "electron", "java", "javaw", "python", "pythonw", "python3",
+    "node", "ruby", "perl", "dotnet",
+    # OS-level wrappers
+    "applicationframehost",   # Windows UWP (Calculator, Mail, Settings …)
+    "wslhost", "conhost",     # Windows console wrappers
+    "gnome-shell", "plasmashell",  # Linux desktop shells
+    # Framework / browser-as-platform wrappers
+    "cefsharp", "nwjs", "tauri",
+    "msedge",  # Edge browser AND Edge PWAs — title disambiguates
+})
+
+# Known process names → correct activity_category.
+# Used to override Gemma's category for NON-BROWSER windows only.
+# Browsers are detected via title suffix (see _BROWSER_TITLE_SUFFIXES)
+# and always trust Gemma's content-aware category.
+KNOWN_APP_CATEGORIES = {
+    # Terminal emulators (most commonly misidentified as "coding")
+    "alacritty": "terminal", "kitty": "terminal", "wezterm": "terminal",
+    "hyper": "terminal", "iterm2": "terminal", "iterm": "terminal",
+    "terminal": "terminal", "windowsterminal": "terminal",
+    "cmd": "terminal", "powershell": "terminal", "pwsh": "terminal",
+    "wt": "terminal",
+    "gnome-terminal": "terminal", "konsole": "terminal", "tilix": "terminal",
+    "foot": "terminal", "st": "terminal", "urxvt": "terminal", "xterm": "terminal",
+    # Communication
+    "discord": "communication", "slack": "communication",
+    "teams": "communication", "microsoft teams": "communication",
+    "telegram": "communication", "whatsapp": "communication",
+    "signal": "communication",
+    "thunderbird": "communication", "outlook": "communication",
+    # Writing / Notes (often misidentified as "coding" due to dark UI)
+    "anytype": "writing", "obsidian": "writing", "notion": "writing",
+    "typora": "writing", "marktext": "writing", "logseq": "writing",
+    "notepad": "writing", "wordpad": "writing",
+    "libreoffice": "writing",
+    # Media
+    "spotify": "media", "vlc": "media", "mpv": "media",
+    # Design
+    "figma": "design", "gimp": "design", "inkscape": "design",
+    # Meetings
+    "zoom": "meeting",
+}
+
+# File extensions used to reject filename candidates from title extraction.
+# Prevents reversed conventions like "mpv - movie.mkv" → extracting "movie.mkv".
+_FILE_EXTENSIONS = frozenset({
+    # Code
+    'py', 'js', 'ts', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'rb', 'php', 'cs',
+    'kt', 'swift', 'lua', 'sh', 'bash', 'zsh', 'ps1',
+    # Web / Config
+    'html', 'css', 'json', 'yaml', 'yml', 'toml', 'xml', 'ini', 'cfg', 'conf',
+    # Documents
+    'txt', 'md', 'log', 'csv', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+    # Media
+    'mp4', 'mkv', 'avi', 'mov', 'webm', 'mp3', 'flac', 'wav', 'ogg',
+    # Images
+    'png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'webp', 'ico',
+})
+
+# Window title suffixes that identify a browser window.
+# When detected, Gemma's activity_category is trusted because it reflects
+# the *content* being viewed (YouTube → media, Gmail → communication),
+# which is more useful than a generic "browsing" override.
+_BROWSER_TITLE_SUFFIXES = (
+    "- Google Chrome", "- Mozilla Firefox", "- Firefox",
+    "- Microsoft Edge", "- Brave", "- Opera", "- Safari",
+    "- Vivaldi", "- Arc", "- Chromium", "- Zen Browser",
+)
+
+# Patterns in window titles that indicate content, not an app name.
+# Used by _extract_simple_title() to reject non-app-name titles.
+_SIMPLE_TITLE_REJECT = ('/', '\\', '@', ':', '$', '#', '~',
+                        '.txt', '.py', '.js', '.ts', '.rs', '.go',
+                        '.html', '.css', '.md', '.json', '.yaml')
+
+# Known browser process names — secondary detection when title suffix is missing.
+# Used as a fallback in _is_browser_window() when L1 title extraction shadows
+# the OS browser name (e.g. title="Jenkins" from Firefox tab without suffix).
+_BROWSER_PROCESS_NAMES = frozenset({
+    "chrome", "chromium", "firefox", "firefox-esr",
+    "brave", "opera", "safari", "vivaldi", "arc",
+    "msedge",  # Also in GENERIC_PROCESS_NAMES — intentional overlap
+})
+
+
+def _extract_app_from_title(window_title: Optional[str]) -> Optional[str]:
+    """Extract app name from the 'content - AppName' title convention.
+
+    Most desktop apps set their window title as ``<document> - <AppName>``.
+    This function takes the *last* segment after `` - `` (or `` – ``/`` — ``).
+
+    Returns None if:
+      - title is None / empty
+      - title has no dash separator
+      - the extracted candidate looks like a filename
+    """
+    if not window_title:
+        return None
+    # Try each dash variant: hyphen, en-dash, em-dash
+    for sep in (" - ", " \u2013 ", " \u2014 "):
+        parts = window_title.rsplit(sep, 1)
+        if len(parts) == 2:
+            candidate = parts[1].strip()
+            if 2 <= len(candidate) <= 40:
+                # Reject filenames (e.g., "movie.mkv" from "mpv - movie.mkv")
+                if '.' in candidate:
+                    ext = candidate.rsplit('.', 1)[-1].lower()
+                    if ext in _FILE_EXTENSIONS:
+                        continue  # Try next separator
+                return candidate
+    return None
+
+
+def _extract_simple_title(window_title: str) -> Optional[str]:
+    """Use a short clean title as the app name when no other signal is available.
+
+    Handles cases like title='AnyType' or title='Calculator' where there is
+    no `` - `` separator.  Rejects titles that look like content (paths,
+    terminal prompts, document names).
+    """
+    title = window_title.strip()
+    if not title or len(title) > 25:
+        return None
+    title_lower = title.lower()
+    if any(p in title_lower for p in _SIMPLE_TITLE_REJECT):
+        return None
+    if title_lower.startswith(('untitled', 'new ', 'document')):
+        return None
+    return title
+
+
+def _is_more_specific_name(hierarchy_name_lower: str, gemma_name_lower: str) -> bool:
+    """Check if Gemma's name is a more specific (friendlier) version.
+
+    Uses word-boundary matching to prevent false positives like
+    ``st`` matching ``steam`` or ``vim`` matching ``neovim``.
+
+    Examples:
+      ("code",  "vs code")       → True  (Gemma is more specific)
+      ("chrome", "google chrome") → True
+      ("st",    "steam")         → False (not a word-boundary match)
+      ("vim",   "neovim")        → False
+    """
+    if len(gemma_name_lower) <= len(hierarchy_name_lower):
+        return False  # Gemma is same length or shorter — not more specific
+    pattern = r'\b' + re.escape(hierarchy_name_lower) + r'\b'
+    return bool(re.search(pattern, gemma_name_lower))
+
+
+def _is_browser_window(
+    window_title: Optional[str],
+    app_name_hint: Optional[str] = None,
+) -> bool:
+    """Detect browser windows via title suffix or OS process name.
+
+    Primary detection: title suffix (e.g. ``"- Google Chrome"``).
+    Fallback: OS process name in ``_BROWSER_PROCESS_NAMES``.
+
+    The fallback handles cases where L1 title extraction shadows the
+    browser process name — e.g. title='Build Log - Jenkins' in Firefox
+    would miss the suffix check, but OS reports 'firefox'.
+    """
+    if window_title and any(window_title.endswith(s) for s in _BROWSER_TITLE_SUFFIXES):
+        return True
+    if app_name_hint and app_name_hint.lower().strip() in _BROWSER_PROCESS_NAMES:
+        return True
+    return False
+
+
+def _lookup_known_category(app_name: str) -> Optional[str]:
+    """Look up the known activity category for an app name.
+
+    Handles:
+      - Case differences  (``AnyType`` → ``anytype``)
+      - Linux 15-char truncation  (``gnome-terminal-`` → ``gnome-terminal``)
+      - Full names containing a dict key  (``Microsoft Teams`` contains ``teams``)
+    """
+    name = app_name.lower().strip().rstrip("-. ")
+
+    # Exact match (fastest path)
+    if name in KNOWN_APP_CATEGORIES:
+        return KNOWN_APP_CATEGORIES[name]
+
+    # Prefix match — handles truncation and version suffixes
+    #   "gnome-terminal-" → startswith("gnome-terminal")  ✓
+    #   "anytype 0.38"    → startswith("anytype")         ✓
+    for known, cat in KNOWN_APP_CATEGORIES.items():
+        if name.startswith(known):
+            return cat
+        # Reverse prefix only for minor truncation (e.g. Linux 15-char comm limit).
+        # Require name to be at least 5 chars AND within 3 chars of the known key
+        # to prevent false matches like "not" → "notion" or "sl" → "slack".
+        if known.startswith(name) and len(name) >= 5 and len(name) >= len(known) - 3:
+            return cat
+
+    # Word-in-phrase — handles full names like "Microsoft Teams"
+    #   re.search(r'\bteams\b', "microsoft teams")  ✓
+    for known, cat in KNOWN_APP_CATEGORIES.items():
+        if re.search(r'\b' + re.escape(known) + r'\b', name):
+            return cat
+
+    return None
+
 ANALYSIS_PROMPT = """You are given two tasks. Divide your attention 40% on analysis and 60% on layout accuracy. Do layout FIRST.
 
 TASK 1 (60% — DO FIRST) — LAYOUT (HIGH ACCURACY REQUIRED):
@@ -152,7 +365,7 @@ class GemmaAnalyzer:
             print(f"[GemmaAnalyzer] Inference completed in {elapsed:.1f}s")
 
             # Parse the merged response (layout + analysis in one JSON)
-            record, regions = self._parse_merged_response(raw_response, app_name_hint)
+            record, regions = self._parse_merged_response(raw_response, app_name_hint, window_title)
             return record, regions
 
         except Exception as e:
@@ -225,7 +438,7 @@ class GemmaAnalyzer:
             print(f"[GemmaAnalyzer] Balanced analysis done in {elapsed:.1f}s")
 
             # _parse_response() strips <think>...</think> tags before JSON parsing
-            record = self._parse_response(raw_response)
+            record = self._parse_response(raw_response, app_name_hint, window_title)
             return record, []
 
         except Exception as e:
@@ -294,7 +507,7 @@ class GemmaAnalyzer:
                 # Run through the full parse pipeline
                 record = self._safe_parse_json(raw)
                 if record:
-                    return self._normalize(record), []
+                    return self._normalize(record, app_name_hint, window_title), []
 
                 # Pipeline exhausted — retry inference
                 if attempt == 0:
@@ -378,7 +591,12 @@ class GemmaAnalyzer:
         image.save(buffer, format="JPEG", quality=85)
         return buffer.getvalue()
 
-    def _parse_merged_response(self, raw: str, app_name_hint: Optional[str] = None):
+    def _parse_merged_response(
+        self,
+        raw: str,
+        app_name_hint: Optional[str] = None,
+        window_title: Optional[str] = None,
+    ):
         """
         Parse merged response containing both layout and analysis.
         Returns (ActivityRecord, list of region dicts).
@@ -412,7 +630,7 @@ class GemmaAnalyzer:
                     if "layout" in analysis_data:
                         analysis_data = {k: v for k, v in analysis_data.items() if k != "layout"}
                     record = ActivityRecord(**analysis_data)
-                    record = self._normalize(record)
+                    record = self._normalize(record, app_name_hint, window_title)
                     return record, valid_regions
             except json.JSONDecodeError:
                 # Try repairing before falling back
@@ -434,7 +652,7 @@ class GemmaAnalyzer:
                                 analysis_data = {k: v for k, v in analysis_data.items() if k != "layout"}
                             record = ActivityRecord(**analysis_data)
                             print(f"[GemmaAnalyzer] JSON repaired successfully (merged)")
-                            return self._normalize(record), valid_regions
+                            return self._normalize(record, app_name_hint, window_title), valid_regions
                     except Exception:
                         pass
                 print(f"[GemmaAnalyzer] Merged parse error (repair failed)")
@@ -443,10 +661,15 @@ class GemmaAnalyzer:
 
         # Fallback: try parsing as analysis-only (old format)
         print("[GemmaAnalyzer] Falling back to analysis-only parsing")
-        record = self._parse_response(raw)
+        record = self._parse_response(raw, app_name_hint, window_title)
         return record, []
 
-    def _parse_response(self, raw: str) -> ActivityRecord:
+    def _parse_response(
+        self,
+        raw: str,
+        app_name_hint: Optional[str] = None,
+        window_title: Optional[str] = None,
+    ) -> ActivityRecord:
         """
         Parse Gemma 4's response into an ActivityRecord.
         Handles various response formats:
@@ -470,26 +693,104 @@ class GemmaAnalyzer:
             try:
                 data = json.loads(json_str)
                 record = ActivityRecord(**data)
-                return self._normalize(record)
+                return self._normalize(record, app_name_hint, window_title)
             except (json.JSONDecodeError, Exception) as e:
                 print(f"[GemmaAnalyzer] JSON parse error: {e}")
 
         # Fallback: try to extract key fields with regex
         print("[GemmaAnalyzer] Falling back to regex extraction")
-        return self._normalize(self._regex_fallback(raw))
+        return self._normalize(self._regex_fallback(raw), app_name_hint, window_title)
 
-    def _normalize(self, record: ActivityRecord) -> ActivityRecord:
-        """Normalize fields to valid enum values."""
-        # Fix multi-value categories like "browsing or other"
-        cat = record.activity_category.lower().strip()
-        for valid in VALID_CATEGORIES:
-            if valid in cat:
-                record.activity_category = valid
-                break
+    def _normalize(
+        self,
+        record: ActivityRecord,
+        app_name_hint: Optional[str] = None,
+        window_title: Optional[str] = None,
+    ) -> ActivityRecord:
+        """Normalize fields and reconcile app identity using three signals.
+
+        Hierarchy for app name (first non-empty wins, then compared with Gemma):
+          L1: Title " - " extraction  (most reliable pattern)
+          L2: OS process name         (ground truth, skip generic wrappers)
+          L3: Title simple extraction  (short clean title, for OS=None/generic)
+          L4: Gemma's visual guess     (last resort — kept as-is)
+
+        At whichever level we get a name, we compare with Gemma using word-boundary
+        substring matching.  If Gemma is a more specific version of our name
+        (e.g. OS='code' → Gemma='VS Code'), we keep Gemma's friendlier name.
+        Otherwise we use the hierarchy value.
+
+        Category reconciliation:
+          - Browser windows → trust Gemma (content-aware: YouTube=media)
+          - Known apps      → use KNOWN_APP_CATEGORIES override
+          - Unknown apps    → trust Gemma (no override info available)
+        """
+        original_app = record.app_name
+        original_cat = record.activity_category
+
+        # ── Phase 1: Walk the hierarchy to find best app name ────────
+        resolved_name = None
+
+        # L1: Title " - " extraction ("main.py - Visual Studio Code" → "Visual Studio Code")
+        title_app = _extract_app_from_title(window_title)
+        if title_app:
+            resolved_name = title_app
+
+        # L2: OS process name (skip generic wrappers like 'electron', 'java')
+        if not resolved_name and app_name_hint:
+            if app_name_hint.lower().strip() not in GENERIC_PROCESS_NAMES:
+                resolved_name = app_name_hint
+
+        # L3: Simple title ("AnyType", "Calculator" — for when OS is None or generic)
+        if not resolved_name and window_title:
+            simple = _extract_simple_title(window_title)
+            if simple:
+                resolved_name = simple
+
+        # L4: Gemma's guess stays as-is (implicit — record.app_name unchanged)
+
+        # ── Phase 2: Compare resolved name with Gemma's guess ────────
+        if resolved_name:
+            resolved_lower = resolved_name.lower().strip()
+            gemma_lower = record.app_name.lower().strip()
+            if _is_more_specific_name(resolved_lower, gemma_lower):
+                pass  # Gemma is more specific (e.g., "code" → "VS Code") — keep it
+            else:
+                record.app_name = resolved_name
+
+        # ── Phase 3+4: Category resolution ────────────────────────────
+        # Check known category override FIRST — if found, skip Gemma
+        # normalization entirely (avoids wasted work when overriding).
+        is_browser = _is_browser_window(window_title, app_name_hint)
+        final_app = record.app_name
+
+        if is_browser:
+            # Browser: trust Gemma's content-based category, just normalize it
+            cat = record.activity_category.lower().strip()
+            for valid in VALID_CATEGORIES:
+                if valid in cat:
+                    record.activity_category = valid
+                    break
+            else:
+                record.activity_category = "other"
         else:
-            record.activity_category = "other"
+            known_cat = _lookup_known_category(final_app)
+            if known_cat:
+                # Authoritative override — skip Gemma normalization
+                record.activity_category = known_cat
+            else:
+                # No override — normalize Gemma's raw category
+                cat = record.activity_category.lower().strip()
+                for valid in VALID_CATEGORIES:
+                    if valid in cat:
+                        record.activity_category = valid
+                        break
+                else:
+                    record.activity_category = "other"
 
-        # Fix mood
+        cat_after_resolution = record.activity_category
+
+        # ── Mood normalization ────────────────────────────────────────
         mood = record.mood.lower().strip()
         for valid in VALID_MOODS:
             if valid in mood:
@@ -498,10 +799,17 @@ class GemmaAnalyzer:
         else:
             record.mood = "neutral"
 
-        # Clamp confidence; default to 0.7 if missing (truncated JSON)
+        # ── Confidence clamping ───────────────────────────────────────
         if record.confidence == 0.0 and record.activity_summary and "failed" not in record.activity_summary.lower():
             record.confidence = 0.7
         record.confidence = max(0.0, min(1.0, record.confidence))
+
+        # ── Reconciliation logging ────────────────────────────────────
+        if record.app_name != original_app:
+            print(f"[Reconcile] App: '{original_app}' → '{record.app_name}' "
+                  f"(hint={app_name_hint}, title={window_title})")
+        if record.activity_category != cat_after_resolution:
+            print(f"[Reconcile] Category: '{original_cat}' → '{record.activity_category}'")
 
         return record
 
