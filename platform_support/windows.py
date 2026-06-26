@@ -3,12 +3,15 @@ Windows Platform Adapter
 Uses Win32 APIs (ctypes) for window detection and UI Automation for a11y.
 """
 
+import logging
 import os
 import sys
 import time
 from typing import Optional, Tuple
 
 from platform_support.base import PlatformAdapter
+
+logger = logging.getLogger("screenmind.platform_support.windows")
 
 
 class WindowsAdapter(PlatformAdapter):
@@ -94,14 +97,14 @@ class WindowsAdapter(PlatformAdapter):
         try:
             import uiautomation as auto
             self._uia = auto
-            print("[A11y] Windows UI Automation initialized")
+            logger.debug("Windows UI Automation initialized")
         except ImportError:
             try:
                 self._uia = None
-                print("[A11y] uiautomation not available, trying ctypes fallback")
+                logger.warning("uiautomation not available, trying ctypes fallback")
             except Exception:
                 self._a11y_available = False
-                print("[A11y] Accessibility API not available on this system")
+                logger.warning("Accessibility API not available on this system")
 
     def is_a11y_available(self) -> bool:
         return self._a11y_available
@@ -125,13 +128,13 @@ class WindowsAdapter(PlatformAdapter):
 
             if text and len(text.strip()) > 20:
                 lines = [l for l in text.strip().split('\n') if l.strip()]
-                print(f"[A11y] Extracted {len(lines)} text elements in {elapsed:.2f}s")
+                logger.debug(f"Extracted {len(lines)} text elements in {elapsed:.2f}s")
                 return text.strip(), "a11y"
             else:
                 return None, "none"
 
         except Exception as e:
-            print(f"[A11y] Extraction failed: {e}")
+            logger.error(f"Extraction failed: {e}")
             return None, "none"
 
     def _extract_uiautomation(self, hwnd: Optional[int] = None) -> Optional[str]:
@@ -189,7 +192,6 @@ class WindowsAdapter(PlatformAdapter):
         try:
             import ctypes
             from ctypes import wintypes
-
             user32 = ctypes.windll.user32
 
             if hwnd is None:

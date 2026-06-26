@@ -4,8 +4,11 @@ Detects and redacts credit cards, SSNs, API keys, passwords from OCR text
 before it's stored in the database or passed to AI models.
 """
 
+import logging
 import re
 from typing import Optional
+
+logger = logging.getLogger("screenmind.privacy.data_filter")
 
 
 # ── Pattern Definitions ──────────────────────────────────────────────
@@ -159,7 +162,7 @@ def filter_sensitive_text(
             details.append({"type": ptype, "count": count})
 
     if total_redacted > 0:
-        print(f"[Privacy] Redacted {total_redacted} sensitive item(s): {', '.join(types_found)}")
+        logger.info(f"Redacted {total_redacted} sensitive item(s): {', '.join(types_found)}")
 
     return {
         "clean_text": clean,

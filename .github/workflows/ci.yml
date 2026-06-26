@@ -37,6 +37,10 @@ jobs:
           }
           if ($failed) { exit 1 }
 
+      - name: Lint — no bare print() in source
+        run: |
+          flake8 --select=T201 --exclude=tests/,ui/overlay.py,setup_llama.py,setup_wizard.py .
+
       - name: Run tests with coverage
         run: |
           pytest --cov=. --cov-report=term-missing --cov-report=xml -q

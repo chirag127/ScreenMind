@@ -13,6 +13,7 @@ Three analysis methods:
 """
 
 import base64
+import logging
 import io
 import json
 import re
@@ -25,6 +26,8 @@ from PIL import Image
 from config import settings
 from engine import llm_client
 from storage.models import ActivityRecord
+
+logger = logging.getLogger("screenmind.engine.analyzer")
 
 
 # ── The Prompt ───────────────────────────────────────────────────────────────
@@ -308,7 +311,7 @@ class GemmaAnalyzer:
         if not self._initialized:
             if llm_client.is_available():
                 self._initialized = True
-                print(f"[GemmaAnalyzer] Connected to llama-server at {settings.llama_server_host}")
+                logger.info(f"Connected to llama-server at {settings.llama_server_host}")
             else:
                 raise ConnectionError(f"Cannot reach llama-server at {settings.llama_server_host}")
 
@@ -362,7 +365,7 @@ class GemmaAnalyzer:
             )
 
             elapsed = time.time() - start_time
-            print(f"[GemmaAnalyzer] Inference completed in {elapsed:.1f}s")
+            logger.info(f"Inference completed in {elapsed:.1f}s")
 
             # Parse the merged response (layout + analysis in one JSON)
             record, regions = self._parse_merged_response(raw_response, app_name_hint, window_title)
@@ -370,7 +373,7 @@ class GemmaAnalyzer:
 
         except Exception as e:
             elapsed = time.time() - start_time
-            print(f"[GemmaAnalyzer] Error after {elapsed:.1f}s: {e}")
+            logger.error(f"Error after {elapsed:.1f}s: {e}")
             return ActivityRecord(
                 app_name=app_name_hint or "unknown",
                 activity_category="other",
@@ -435,7 +438,7 @@ class GemmaAnalyzer:
             )
 
             elapsed = time.time() - start_time
-            print(f"[GemmaAnalyzer] Balanced analysis done in {elapsed:.1f}s")
+            logger.info(f"Balanced analysis done in {elapsed:.1f}s")
 
             # _parse_response() strips <think>...</think> tags before JSON parsing
             record = self._parse_response(raw_response, app_name_hint, window_title)
@@ -443,7 +446,7 @@ class GemmaAnalyzer:
 
         except Exception as e:
             elapsed = time.time() - start_time
-            print(f"[GemmaAnalyzer] Balanced analysis error after {elapsed:.1f}s: {e}")
+            logger.error(f"Balanced analysis error after {elapsed:.1f}s: {e}")
             return ActivityRecord(
                 app_name=app_name_hint or "unknown",
                 activity_category="other",
@@ -502,7 +505,7 @@ class GemmaAnalyzer:
                     max_tokens=500,
                 )
                 elapsed = time.time() - start_time
-                print(f"[GemmaAnalyzer] Fast analysis done in {elapsed:.1f}s")
+                logger.info(f"Fast analysis done in {elapsed:.1f}s")
 
                 # Run through the full parse pipeline
                 record = self._safe_parse_json(raw)
@@ -511,15 +514,15 @@ class GemmaAnalyzer:
 
                 # Pipeline exhausted — retry inference
                 if attempt == 0:
-                    print(f"[GemmaAnalyzer] All parse methods failed, retrying inference...")
+                    logger.warning("All parse methods failed, retrying inference...")
                     continue
 
             except Exception as e:
                 elapsed = time.time() - start_time
                 if attempt == 0:
-                    print(f"[GemmaAnalyzer] Fast analysis error, retrying: {e}")
+                    logger.warning(f"Fast analysis error, retrying: {e}")
                     continue
-                print(f"[GemmaAnalyzer] Fast analysis failed after {elapsed:.1f}s: {e}")
+                logger.error(f"Fast analysis failed after {elapsed:.1f}s: {e}")
 
         return ActivityRecord(
             app_name=app_name_hint or "unknown",
@@ -558,7 +561,7 @@ class GemmaAnalyzer:
             if repaired:
                 try:
                     data = json.loads(repaired)
-                    print(f"[GemmaAnalyzer] JSON repaired successfully")
+                    logger.debug("JSON repaired successfully")
                     return ActivityRecord(**data)
                 except Exception:
                     pass
@@ -566,7 +569,7 @@ class GemmaAnalyzer:
         # Step 3: Regex fallback — extract fields individually
         fallback = self._regex_fallback(raw)
         if fallback.activity_summary != "Unable to parse response":
-            print(f"[GemmaAnalyzer] Used regex fallback")
+            logger.debug("Used regex fallback")
             return fallback
 
         return None
@@ -651,16 +654,16 @@ class GemmaAnalyzer:
                             if "layout" in analysis_data:
                                 analysis_data = {k: v for k, v in analysis_data.items() if k != "layout"}
                             record = ActivityRecord(**analysis_data)
-                            print(f"[GemmaAnalyzer] JSON repaired successfully (merged)")
+                            logger.debug("JSON repaired successfully (merged)")
                             return self._normalize(record, app_name_hint, window_title), valid_regions
                     except Exception:
                         pass
-                print(f"[GemmaAnalyzer] Merged parse error (repair failed)")
+                logger.debug("Merged parse error (repair failed)")
             except Exception as e:
-                print(f"[GemmaAnalyzer] Merged parse error: {e}")
+                logger.debug(f"Merged parse error: {e}")
 
         # Fallback: try parsing as analysis-only (old format)
-        print("[GemmaAnalyzer] Falling back to analysis-only parsing")
+        logger.debug("Falling back to analysis-only parsing")
         record = self._parse_response(raw, app_name_hint, window_title)
         return record, []
 
@@ -695,10 +698,10 @@ class GemmaAnalyzer:
                 record = ActivityRecord(**data)
                 return self._normalize(record, app_name_hint, window_title)
             except (json.JSONDecodeError, Exception) as e:
-                print(f"[GemmaAnalyzer] JSON parse error: {e}")
+                logger.debug(f"JSON parse error: {e}")
 
         # Fallback: try to extract key fields with regex
-        print("[GemmaAnalyzer] Falling back to regex extraction")
+        logger.debug("Falling back to regex extraction")
         return self._normalize(self._regex_fallback(raw), app_name_hint, window_title)
 
     def _normalize(
@@ -806,10 +809,10 @@ class GemmaAnalyzer:
 
         # ── Reconciliation logging ────────────────────────────────────
         if record.app_name != original_app:
-            print(f"[Reconcile] App: '{original_app}' → '{record.app_name}' "
+            logger.debug(f"Reconcile App: '{original_app}' → '{record.app_name}' "
                   f"(hint={app_name_hint}, title={window_title})")
         if record.activity_category != cat_after_resolution:
-            print(f"[Reconcile] Category: '{original_cat}' → '{record.activity_category}'")
+            logger.debug(f"Reconcile Category: '{original_cat}' → '{record.activity_category}'")
 
         return record
 

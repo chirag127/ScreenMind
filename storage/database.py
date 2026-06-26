@@ -5,6 +5,7 @@ Schema creation, CRUD for activities, dev contexts, and daily summaries.
 """
 
 import json
+import logging
 import sqlite3
 import threading
 from datetime import datetime, date
@@ -13,6 +14,8 @@ from typing import List, Optional, Dict, Any
 
 from config import settings
 from storage.models import ActivityRecord, DevContext, ScreenshotEntry, DailySummary
+
+logger = logging.getLogger("screenmind.storage.database")
 
 
 class Database:
@@ -193,12 +196,12 @@ class Database:
                 try:
                     conn.execute(sql)
                 except Exception:
-                    pass  # Column may already exist from pre-migration installs
+                    logger.debug("Migration %d already applied", i)
                 conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", (i,))
 
         conn.commit()
         if current < len(migrations):
-            print(f"[Database] Migrated schema v{current} → v{len(migrations)}")
+            logger.info(f"Migrated schema v{current} → v{len(migrations)}")
 
         # ── FTS5 setup (after migrations so all columns exist for rebuild) ───
         # Check if all 3 sync triggers exist (not just one, to catch partial creates)
@@ -210,9 +213,9 @@ class Database:
         if trigger_count < 3:
             try:
                 self._recreate_fts(conn)
-                print("[Database] FTS5 table + triggers created, index rebuilt")
+                logger.info("FTS5 table + triggers created, index rebuilt")
             except Exception as e:
-                print(f"[Database] FTS5 setup failed: {e}")
+                logger.error(f"FTS5 setup failed: {e}")
         else:
             # Triggers exist — verify FTS5 table is intact (not corrupted)
             try:
@@ -220,14 +223,14 @@ class Database:
                     f"SELECT {self._FTS5_COLUMNS} FROM activities_fts LIMIT 0"
                 )
             except Exception as e:
-                print(f"[Database] FTS5 table damaged, rebuilding: {e}")
+                logger.warning(f"FTS5 table damaged, rebuilding: {e}")
                 try:
                     self._recreate_fts(conn)
-                    print("[Database] FTS5 rebuilt successfully")
+                    logger.info("FTS5 rebuilt successfully")
                 except Exception as e2:
-                    print(f"[Database] FTS5 rebuild failed: {e2}")
+                    logger.error(f"FTS5 rebuild failed: {e2}")
 
-        print(f"[Database] Initialized at {self._db_path}")
+        logger.info(f"Initialized at {self._db_path}")
 
     # ── Activity CRUD ────────────────────────────────────────────────────
 
@@ -474,7 +477,8 @@ class Database:
             ).fetchone()
             meetings_count = meetings_row["cnt"]
             meetings_minutes = meetings_row["total_mins"]
-        except Exception:
+        except sqlite3.OperationalError as e:
+            logger.warning("Meeting stats query failed: %s", e)
             meetings_count = 0
             meetings_minutes = 0
 
@@ -529,7 +533,7 @@ class Database:
         try:
             conn.execute("ALTER TABLE daily_summaries ADD COLUMN standup TEXT")
         except Exception:
-            pass  # Column already exists
+            logger.debug("standup column already exists")
         conn.execute(
             """
             INSERT INTO daily_summaries (date, summary, standup, total_activities, category_breakdown, top_repos, productive_hours)
@@ -607,8 +611,8 @@ class Database:
                 p = Path(row["screenshot_path"])
                 if p.exists():
                     p.unlink()
-            except Exception:
-                pass
+            except (OSError, PermissionError) as e:
+                logger.debug("Cleanup skipped: %s", e)
         return cursor.rowcount
 
     def get_disk_usage(self) -> Dict[str, Any]:
@@ -673,8 +677,8 @@ class Database:
                 p = Path(row["screenshot_path"])
                 if p.exists():
                     p.unlink()
-            except Exception:
-                pass
+            except (OSError, PermissionError) as e:
+                logger.debug("Cleanup skipped: %s", e)
 
         # Clean up empty date directories
         if settings.screenshots_dir.exists():
@@ -682,8 +686,8 @@ class Database:
                 if d.is_dir() and not any(d.iterdir()):
                     try:
                         d.rmdir()
-                    except Exception:
-                        pass
+                    except (OSError, PermissionError) as e:
+                        logger.debug("Could not remove empty dir: %s", e)
 
         return {"activities": activities_deleted, "meetings": meetings_deleted}
 

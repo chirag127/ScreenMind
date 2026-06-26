@@ -6,7 +6,9 @@ Runtime changes (from dashboard) are persisted to settings.json.
 """
 
 import json
+import logging
 import os
+import sys
 import threading
 from pathlib import Path
 from typing import List, Literal, Optional
@@ -14,6 +16,49 @@ from typing import List, Literal, Optional
 from pydantic_settings import BaseSettings
 from pydantic import Field, ValidationError
 
+
+
+# ── Logging Setup ────────────────────────────────────────────────────────────
+
+def _setup_logging():
+    """Configure screenmind logger hierarchy. Safe to call multiple times.
+
+    Environment variables:
+        SCREENMIND_LOG_LEVEL: DEBUG, INFO (default), WARNING, ERROR
+        SCREENMIND_LOG_FILE:  Optional path to a log file (rotating, 10MB x 3 backups)
+    """
+    root = logging.getLogger("screenmind")
+    if root.handlers:
+        return
+    level = os.environ.get("SCREENMIND_LOG_LEVEL", "INFO")
+    root.setLevel(getattr(logging, level.upper(), logging.INFO))
+    fmt = logging.Formatter(
+        "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    # Always log to stderr
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setFormatter(fmt)
+    root.addHandler(stderr_handler)
+
+    # Optionally log to a rotating file
+    log_file = os.environ.get("SCREENMIND_LOG_FILE")
+    if log_file:
+        try:
+            from logging.handlers import RotatingFileHandler
+            file_handler = RotatingFileHandler(
+                log_file, maxBytes=10 * 1024 * 1024, backupCount=3, encoding="utf-8",
+            )
+            file_handler.setFormatter(fmt)
+            root.addHandler(file_handler)
+        except (OSError, PermissionError) as e:
+            # Invalid path or no write permission — continue with stderr only
+            root.warning(f"Could not open log file '{log_file}': {e}")
+
+_setup_logging()
+
+logger = logging.getLogger("screenmind.config")
 
 # Settings keys that can be overridden at runtime (from dashboard or settings.json)
 _ALLOWED_OVERRIDES = {
@@ -300,10 +345,10 @@ class Settings(BaseSettings):
                         try:
                             setattr(self, k, v)
                         except (ValueError, ValidationError):
-                            print(f"[Config] Invalid override ignored: {k}={v!r}")
-                print(f"[Config] Loaded runtime overrides: {list(overrides.keys())}")
+                            logger.warning("Invalid override ignored: %s=%r", k, v)
+                logger.info(f"Loaded runtime overrides: {list(overrides.keys())}")
             except Exception as e:
-                print(f"[Config] Failed to load settings.json: {e}")
+                logger.error(f"Failed to load settings.json: {e}")
 
     def save_runtime_overrides(self, updates: dict):
         """Save dashboard settings to settings.json."""
@@ -313,16 +358,16 @@ class Settings(BaseSettings):
             if path.exists():
                 try:
                     existing = json.loads(path.read_text())
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Could not read existing settings.json: %s", e)
             for k, v in updates.items():
                 if k in _ALLOWED_OVERRIDES:
                     existing[k] = v
                     if hasattr(self, k):
                         try:
                             setattr(self, k, v)
-                        except (ValueError, ValidationError):
-                            pass  # saved to JSON but not applied in memory
+                        except (ValueError, ValidationError) as e:
+                            logger.debug("Override not applied in memory: %s=%r, %s", k, v, e)
             path.write_text(json.dumps(existing, indent=2))
 
 

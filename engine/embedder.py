@@ -4,8 +4,11 @@ Generates semantic embeddings for activity summaries using
 sentence-transformers. Used for natural language search over activities.
 """
 
+import logging
 import numpy as np
 from typing import List, Optional
+
+logger = logging.getLogger("screenmind.engine.embedder")
 
 
 class Embedder:
@@ -25,15 +28,15 @@ class Embedder:
             try:
                 from sentence_transformers import SentenceTransformer
 
-                print(f"[Embedder] Loading model: {self._model_name}...")
+                logger.info(f"Loading model: {self._model_name}...")
                 self._model = SentenceTransformer(self._model_name)
                 self._initialized = True
-                print(f"[Embedder] Model loaded. Dimensions: {self._model.get_sentence_embedding_dimension()}")
+                logger.info(f"Model loaded. Dimensions: {self._model.get_sentence_embedding_dimension()}")
             except ImportError:
-                print("[Embedder] sentence-transformers not installed. Semantic search disabled.")
+                logger.warning("sentence-transformers not installed. Semantic search disabled.")
                 raise
             except Exception as e:
-                print(f"[Embedder] Failed to load model: {e}")
+                logger.error(f"Failed to load model: {e}")
                 raise
 
     def embed_text(self, text: str) -> List[float]:

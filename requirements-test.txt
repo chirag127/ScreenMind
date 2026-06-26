@@ -37,3 +37,7 @@ mcp[cli]==1.26.0
 pytest
 pytest-asyncio
 pytest-cov
+
+# Linting (no bare print() enforcement)
+flake8
+flake8-print

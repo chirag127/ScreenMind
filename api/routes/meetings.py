@@ -1,10 +1,13 @@
 """Meeting routes — transcripts, summaries, CRUD."""
 
+import logging
 import threading
 
 from fastapi import APIRouter, HTTPException, Query
 
 from api.dependencies import db, audio_worker
+
+logger = logging.getLogger("screenmind.api.routes.meetings")
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
 
@@ -43,9 +46,9 @@ async def delete_meeting(meeting_id: int):
     if audio_worker and audio_worker.in_meeting and audio_worker._meeting_id == meeting_id:
         try:
             audio_worker.force_stop()
-            print(f"[Meetings] Force-stopped active recording for meeting {meeting_id}")
+            logger.warning(f"Force-stopped active recording for meeting {meeting_id}")
         except Exception as e:
-            print(f"[Meetings] Force-stop failed: {e}")
+            logger.error(f"Force-stop failed: {e}")
 
     deleted = db.delete_meeting(meeting_id)
     if not deleted:

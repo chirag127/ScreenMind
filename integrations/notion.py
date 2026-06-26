@@ -4,7 +4,10 @@ Auto-exports daily summaries to a Notion database.
 Requires: pip install notion-client
 """
 
+import logging
 from datetime import datetime
+
+logger = logging.getLogger("screenmind.integrations.notion")
 
 
 def export_summary(token: str, database_id: str, date_str: str, summary: str, standup: str = "", activity_count: int = 0) -> bool:
@@ -25,11 +28,11 @@ def export_summary(token: str, database_id: str, date_str: str, summary: str, st
     try:
         from notion_client import Client
     except ImportError:
-        print("[Notion] notion-client not installed. Run: pip install notion-client")
+        logger.warning("notion-client not installed. Run: pip install notion-client")
         return False
 
     if not token or not database_id:
-        print("[Notion] Token or database ID not configured.")
+        logger.warning("Token or database ID not configured.")
         return False
 
     try:
@@ -82,11 +85,11 @@ def export_summary(token: str, database_id: str, date_str: str, summary: str, st
             children=children,
         )
 
-        print(f"[Notion] Exported summary for {date_str}")
+        logger.info(f"Exported summary for {date_str}")
         return True
 
     except Exception as e:
-        print(f"[Notion] Export failed: {e}")
+        logger.error(f"Export failed: {e}")
         return False
 
 

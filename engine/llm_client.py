@@ -8,6 +8,7 @@ llama-server frees the GPU slot when the HTTP client disconnects.
 """
 
 import base64
+import logging
 import threading
 import time
 from typing import Optional, List
@@ -15,6 +16,8 @@ from typing import Optional, List
 import httpx
 
 from config import settings
+
+logger = logging.getLogger("screenmind.engine.llm_client")
 
 
 # Timeout for inference calls (screenshots can take 30-60s on slow hardware)
@@ -54,7 +57,7 @@ def cancel_current_inference():
                 _active_client.close()
             except Exception:
                 pass  # Already closed or errored — fine
-    print("[LLM] Inference cancelled (chat priority)")
+    logger.info("Inference cancelled (chat priority)")
 
 
 def is_inference_active() -> bool:

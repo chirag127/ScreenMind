@@ -1,5 +1,6 @@
 """Chat routes — agent-style conversational AI with timeline access."""
 
+import logging
 import asyncio
 import io
 import json as _json
@@ -14,6 +15,8 @@ from starlette.responses import StreamingResponse
 
 from config import settings
 from api.dependencies import db, embedder
+
+logger = logging.getLogger("screenmind.api.routes.chat")
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -172,12 +175,12 @@ async def chat_with_memory(request: Request):
                 fts_ids = [r[0] for r in fts_rows]
                 fts_rank_map = {rid: pos for pos, rid in enumerate(fts_ids)}
             except Exception as e:
-                print(f"[Chat] FTS5 query failed: {e}")
+                logger.error(f"FTS5 query failed: {e}")
                 # Auto-repair corrupted FTS5 index
                 if "malformed" in str(e).lower():
                     try:
                         db._recreate_fts(conn)
-                        print("[Chat] FTS5 repaired, retrying query...")
+                        logger.info("FTS5 repaired, retrying query...")
                         fts_rows = conn.execute(
                             f"""SELECT a.id FROM activities_fts
                             JOIN activities a ON a.id = activities_fts.rowid
@@ -188,7 +191,7 @@ async def chat_with_memory(request: Request):
                         fts_ids = [r[0] for r in fts_rows]
                         fts_rank_map = {rid: pos for pos, rid in enumerate(fts_ids)}
                     except Exception as e2:
-                        print(f"[Chat] FTS5 repair failed: {e2}")
+                        logger.error(f"FTS5 repair failed: {e2}")
 
             if fts_ids:
                 yield send_progress(f"🔍 Searching timeline for: {', '.join(q_keywords)}")
@@ -470,9 +473,9 @@ async def chat_with_memory(request: Request):
                 except Exception:
                     pass
             if not _slot_free:
-                print("[Chat] GPU slot still busy after 10s — proceeding anyway")
+                logger.info("GPU slot still busy after 10s — proceeding anyway")
 
-        print(f"\n[Chat] Mode: {'vision' if timeline_context == 'vision' else 'text' if timeline_context else 'chat'} | Messages: {len(messages)}")
+        logger.debug(f"Mode: {'vision' if timeline_context == 'vision' else 'text' if timeline_context else 'chat'} | Messages: {len(messages)}")
 
         yield send_progress(f"🤖 {'Analyzing screenshot...' if timeline_context == 'vision' else 'Analyzing...' if timeline_context else 'Thinking...'}")
 
@@ -490,7 +493,7 @@ async def chat_with_memory(request: Request):
 
             # Empty response detection
             if not answer.strip() and timeline_context:
-                print("[Chat] Empty response — retrying...")
+                logger.info("Empty response — retrying...")
                 yield send_progress("⚠️ Empty response, retrying...")
                 await asyncio.sleep(2)
 
@@ -507,7 +510,7 @@ async def chat_with_memory(request: Request):
                     pass
 
                 if not answer.strip() and screenshot_path and Path(screenshot_path).exists():
-                    print("[Chat] Still empty after retry — falling back to vision...")
+                    logger.info("Still empty after retry — falling back to vision...")
                     yield send_progress("📷 Trying screenshot fallback...")
                     mode = "vision"
                     try:

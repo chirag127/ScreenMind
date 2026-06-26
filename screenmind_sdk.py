@@ -7,6 +7,7 @@ Usage in plugins:
     from screenmind_sdk import save_state, load_state, ask_gemma
 """
 
+import logging
 import json
 import os
 import re
@@ -17,6 +18,8 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger("screenmind.sdk")
 
 API_BASE = "http://127.0.0.1:7777"
 
@@ -41,10 +44,10 @@ def _get(path: str) -> dict:
         with urllib.request.urlopen(f"{API_BASE}{path}", timeout=15) as resp:
             return json.loads(resp.read())
     except (urllib.error.URLError, urllib.error.HTTPError, OSError) as e:
-        print(f"[SDK] GET {path} failed: {e}")
+        logger.error(f"GET {path} failed: {e}")
         return {}
     except json.JSONDecodeError as e:
-        print(f"[SDK] GET {path} invalid JSON: {e}")
+        logger.warning(f"GET {path} invalid JSON: {e}")
         return {}
 
 
@@ -59,10 +62,10 @@ def _post(path: str, data: dict = None) -> dict:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read())
     except (urllib.error.URLError, urllib.error.HTTPError, OSError) as e:
-        print(f"[SDK] POST {path} failed: {e}")
+        logger.error(f"POST {path} failed: {e}")
         return {}
     except json.JSONDecodeError as e:
-        print(f"[SDK] POST {path} invalid JSON: {e}")
+        logger.warning(f"POST {path} invalid JSON: {e}")
         return {}
 
 
@@ -137,7 +140,7 @@ def notify(title: str, message: str, color: str = "#8b5cf6"):
         from ui.overlay import show_overlay_notification
         show_overlay_notification(title, message, duration=5.0, color=color)
     except Exception:
-        print(f"[SDK:Notify] {title}: {message}")
+        logger.info(f"{title}: {message}")
 
 
 def capture_now() -> dict:
@@ -159,7 +162,7 @@ def write_file(path: str, content: str):
     os.makedirs(os.path.dirname(resolved) or ".", exist_ok=True)
     with open(resolved, "w", encoding="utf-8") as f:
         f.write(content)
-    print(f"[SDK] Wrote {len(content)} bytes to {resolved}")
+    logger.debug(f"Wrote {len(content)} bytes to {resolved}")
 
 
 # ── Data Access (New — Filtered Queries) ─────────────────────────────

@@ -5,6 +5,7 @@ On Wayland, uses compositor-specific IPC (swaymsg/hyprctl/niri msg).
 AT-SPI for accessibility on both.
 """
 
+import logging
 import json
 import os
 import subprocess
@@ -12,6 +13,8 @@ import time
 from typing import Optional, Tuple
 
 from platform_support.base import PlatformAdapter
+
+logger = logging.getLogger("screenmind.platform_support.linux")
 
 
 def _is_wayland() -> bool:
@@ -52,16 +55,16 @@ class LinuxAdapter(PlatformAdapter):
             )
             self._xdotool_available = result.returncode == 0
             if self._xdotool_available:
-                print("[Platform] Linux xdotool available")
+                logger.info("Linux xdotool available")
         except Exception:
-            print("[Platform] xdotool not found (install: sudo apt install xdotool)")
+            logger.warning("xdotool not found (install: sudo apt install xdotool)")
 
         try:
             import pyatspi  # type: ignore
             self._atspi_available = True
-            print("[Platform] Linux AT-SPI available")
+            logger.info("Linux AT-SPI available")
         except ImportError:
-            print("[Platform] AT-SPI not available (install: pip install pyatspi)")
+            logger.warning("AT-SPI not available (install: pip install pyatspi)")
 
     @property
     def platform_name(self) -> str:
@@ -320,13 +323,13 @@ class LinuxAdapter(PlatformAdapter):
             if texts:
                 result = '\n'.join(texts)
                 if len(result.strip()) > 20:
-                    print(f"[A11y] Linux: Extracted {len(texts)} elements")
+                    logger.debug(f"Linux: Extracted {len(texts)} elements")
                     return result.strip(), "a11y"
 
             return None, "none"
 
         except Exception as e:
-            print(f"[A11y] Linux extraction failed: {e}")
+            logger.error(f"Linux extraction failed: {e}")
             return None, "none"
 
     def _walk_atspi_tree(self, node, texts: list, depth: int, max_depth: int = 8):
@@ -336,7 +339,6 @@ class LinuxAdapter(PlatformAdapter):
 
         try:
             import pyatspi  # type: ignore
-
             # Get name
             name = node.name
             if name and name.strip() and len(name.strip()) > 1:

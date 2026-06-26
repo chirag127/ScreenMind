@@ -5,6 +5,7 @@ transcribes with Gemma 4's native audio encoder, and generates meeting summaries
 """
 
 import io
+import logging
 import time
 import threading
 import wave
@@ -15,6 +16,8 @@ import numpy as np
 
 from config import settings
 from storage.database import Database
+
+logger = logging.getLogger("screenmind.workers.audio_worker")
 
 
 # Meeting app keywords
@@ -97,12 +100,12 @@ class AudioWorker:
             from engine import llm_client
             if llm_client.is_available():
                 self._available = True
-                print("[AudioWorker] Gemma audio transcription ready (via llama-server).")
+                logger.info("Gemma audio transcription ready (via llama-server).")
             else:
-                print("[AudioWorker] llama-server not available — meeting transcription disabled")
+                logger.warning("llama-server not available — meeting transcription disabled")
                 self._available = False
         except Exception as e:
-            print(f"[AudioWorker] Transcription init failed: {e}")
+            logger.warning(f"Transcription init failed: {e}")
             self._available = False
 
     @property
@@ -142,11 +145,11 @@ class AudioWorker:
             elapsed = time.time() - self._last_meeting_app_seen
             if elapsed > MEETING_GRACE_PERIOD:
                 # Hard timeout — meeting definitely over
-                print(f"[AudioWorker] Meeting timeout ({elapsed:.0f}s away) — stopping")
+                logger.info(f"Meeting timeout ({elapsed:.0f}s away) — stopping")
                 self._stop_meeting()
             elif elapsed > 30 and not self._is_meeting_process_alive():
                 # Process dead — meeting truly over (30s debounce)
-                print("[AudioWorker] Meeting app process ended — stopping")
+                logger.info("Meeting app process ended — stopping")
                 self._stop_meeting()
         else:
             # Not a meeting app and not in meeting — reset silence log
@@ -198,9 +201,9 @@ class AudioWorker:
                 rms = np.sqrt(np.mean(mic_audio ** 2))
                 if rms > PROBE_RMS_THRESHOLD:
                     detected = True
-                    print(f"[AudioWorker] 🎤 Mic voice detected (RMS={rms:.4f})")
+                    logger.info(f"Mic voice detected (RMS={rms:.4f})")
             except Exception as e:
-                print(f"[AudioWorker] Mic probe failed: {e}")
+                logger.debug(f"Mic probe failed: {e}")
 
             # ── 2. Probe system audio (loopback) ──────────────────────
             if not detected:
@@ -224,14 +227,14 @@ class AudioWorker:
                         rms = np.sqrt(np.mean(sys_audio ** 2))
                         if rms > PROBE_RMS_THRESHOLD:
                             detected = True
-                            print(f"[AudioWorker] 🔊 System audio detected (RMS={rms:.4f})")
+                            logger.info(f"System audio detected (RMS={rms:.4f})")
                 except Exception:
                     pass  # Loopback not available — mic-only probe is fine
 
         except ImportError:
-            print("[AudioWorker] sounddevice not available for audio probe")
+            logger.debug("sounddevice not available for audio probe")
         except Exception as e:
-            print(f"[AudioWorker] Audio probe error: {e}")
+            logger.debug(f"Audio probe error: {e}")
         finally:
             self._probe_in_progress = False
             self._last_probe_time = time.time()
@@ -253,21 +256,21 @@ class AudioWorker:
                     self._consecutive_voice_probes = 0
                     self._start_meeting(app)
                 else:
-                    print(f"[AudioWorker] Voice probe {self._consecutive_voice_probes}/{PROBE_CONFIRM_COUNT} "
+                    logger.info(f"Voice probe {self._consecutive_voice_probes}/{PROBE_CONFIRM_COUNT} "
                           f"— confirming before starting meeting...")
             else:
                 # No voice — reset confirmation counter
                 self._consecutive_voice_probes = 0
                 if not getattr(self, '_silence_logged_app', None) == self._pending_meeting_app:
                     self._silence_logged_app = self._pending_meeting_app
-                    print(f"[AudioWorker] {self._pending_meeting_app} in foreground but no voice detected — skipping")
+                    logger.info(f"{self._pending_meeting_app} in foreground but no voice detected — skipping")
 
     def _start_meeting(self, app_name: str):
         """Begin recording a meeting session."""
         # Guard: don't record if active model can't transcribe audio
         from engine import model_manager
         if not model_manager.is_audio_capable():
-            print(f"[AudioWorker] Meeting detected ({app_name}) but active model "
+            logger.info(f"Meeting detected ({app_name}) but active model "
                   f"has no audio encoder — skipping recording")
             return
 
@@ -290,7 +293,7 @@ class AudioWorker:
             app_name=app_name,
         )
         proc_info = f", process={self._meeting_process}" if self._meeting_process else ", browser-based"
-        print(f"[AudioWorker] Meeting started ({app_name}{proc_info}) — recording...")
+        logger.info(f"Meeting started ({app_name}{proc_info}) — recording...")
 
         # System-wide overlay notification
         try:
@@ -328,7 +331,7 @@ class AudioWorker:
         duration = (end_time - self._session_start).total_seconds() / 60 if self._session_start else 0
         full_transcript = "\n".join(self._session_transcript)
 
-        print(f"[AudioWorker] 🎙️ Meeting ended ({duration:.1f} min, {len(self._session_transcript)} chunks)")
+        logger.info(f"Meeting ended ({duration:.1f} min, {len(self._session_transcript)} chunks)")
 
         # System-wide overlay notification
         try:
@@ -352,7 +355,7 @@ class AudioWorker:
                 transcript=full_transcript,
                 summary="⏳ Generating summary...",
             )
-            print(f"[AudioWorker] ✅ Transcript saved ({len(full_transcript)} chars, {len(self._session_transcript)} chunks)")
+            logger.info(f"Transcript saved ({len(full_transcript)} chars, {len(self._session_transcript)} chunks)")
             # Trigger summary in background thread
             summary_thread = threading.Thread(
                 target=self._generate_summary,
@@ -361,7 +364,7 @@ class AudioWorker:
             )
             summary_thread.start()
         elif self._meeting_id:
-            print(f"[AudioWorker] ⚠️ No transcript to save (session_transcript={len(self._session_transcript)} items)")
+            logger.warning(f"No transcript to save (session_transcript={len(self._session_transcript)} items)")
             self._db.update_meeting(
                 meeting_id=self._meeting_id,
                 end_time=end_time,
@@ -386,7 +389,7 @@ class AudioWorker:
         try:
             import sounddevice as sd
         except ImportError:
-            print("[AudioWorker] sounddevice not installed — cannot record")
+            logger.warning("sounddevice not installed — cannot record")
             return
 
         # Find system loopback device once (not every chunk)
@@ -416,7 +419,7 @@ class AudioWorker:
                             )
                             sd.wait()
                         except Exception as e:
-                            print(f"[AudioWorker] Mic record error: {e}")
+                            logger.debug(f"Mic record error: {e}")
 
                     def record_sys():
                         try:
@@ -494,14 +497,14 @@ class AudioWorker:
                 if not mic_had_speech and not sys_had_speech:
                     consecutive_silent += 1
                     if consecutive_silent >= SILENCE_AUTO_STOP_CHUNKS:
-                        print(f"[AudioWorker] ⏹️ {consecutive_silent} consecutive silent chunks — auto-stopping meeting")
+                        logger.info(f"{consecutive_silent} consecutive silent chunks -- auto-stopping meeting")
                         self._stop_meeting()
                         return
                 else:
                     consecutive_silent = 0
 
             except Exception as e:
-                print(f"[AudioWorker] Recording error: {e}")
+                logger.error(f"Recording error: {e}")
                 if not self._stop_recording.is_set():
                     time.sleep(2)
 
@@ -514,11 +517,11 @@ class AudioWorker:
                 name = d.get("name", "").lower()
                 if ("loopback" in name or "stereo mix" in name) \
                         and d.get("max_input_channels", 0) > 0:
-                    print(f"[AudioWorker] Found system audio device: {d['name']}")
+                    logger.info(f"Found system audio device: {d['name']}")
                     return i
         except Exception:
             pass
-        print("[AudioWorker] No system audio loopback found — mic only")
+        logger.info("No system audio loopback found — mic only")
         return None
 
     @staticmethod
@@ -568,11 +571,11 @@ class AudioWorker:
             text = text.strip() if text else ""
             if text and len(text) > 5:  # Ignore very short fragments
                 self._session_transcript.append(f"[{speaker}] {text}")
-                print(f"[AudioWorker] [{speaker}] {text[:100]}{'...' if len(text) > 100 else ''}")
+                logger.info(f"[{speaker}] {text[:100]}{'...' if len(text) > 100 else ''}")
                 return True
             return False
         except Exception as e:
-            print(f"[AudioWorker] Transcription error: {e}")
+            logger.error(f"Transcription error: {e}")
             return False
 
     def _generate_summary(self, meeting_id: int, transcript: str):
@@ -617,7 +620,7 @@ If a section has no content, write "None discussed."
                 for i in range(0, len(transcript), chunk_size):
                     chunks.append(transcript[i:i + chunk_size])
 
-                print(f"[AudioWorker] Long transcript ({len(transcript)} chars) — "
+                logger.info(f"Long transcript ({len(transcript)} chars) — "
                       f"map-reduce with {len(chunks)} chunks")
 
                 # Step 2: summarize each chunk
@@ -634,9 +637,9 @@ If a section has no content, write "None discussed."
                         )
                         if chunk_summary and chunk_summary.strip():
                             chunk_summaries.append(f"--- Part {idx + 1} ---\n{chunk_summary.strip()}")
-                            print(f"[AudioWorker] Chunk {idx + 1}/{len(chunks)} summarized")
+                            logger.info(f"Chunk {idx + 1}/{len(chunks)} summarized")
                     except Exception as e:
-                        print(f"[AudioWorker] Chunk {idx + 1} summary failed: {e}")
+                        logger.warning(f"Chunk {idx + 1} summary failed: {e}")
                         chunk_summaries.append(f"--- Part {idx + 1} ---\n(Summary failed)")
 
                 # Step 3: combine chunk summaries into final structured summary
@@ -648,11 +651,11 @@ If a section has no content, write "None discussed."
 
             if summary and summary.strip():
                 self._db.update_meeting_summary(meeting_id, summary.strip())
-                print(f"[AudioWorker] Meeting summary generated ({len(summary)} chars)")
+                logger.info(f"Meeting summary generated ({len(summary)} chars)")
             else:
-                print("[AudioWorker] Empty summary from Gemma")
+                logger.warning("Empty summary from Gemma")
         except Exception as e:
-            print(f"[AudioWorker] Summary generation failed: {e}")
+            logger.error(f"Summary generation failed: {e}")
             self._db.update_meeting_summary(
                 meeting_id, f"❌ Summary failed: {str(e)[:100]}"
             )

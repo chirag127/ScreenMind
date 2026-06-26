@@ -7,6 +7,7 @@ Note: The `keyboard` library does not support modifier+letter hotkeys on macOS.
 On darwin, start() is a no-op and hotkeys are unavailable (use the dashboard instead).
 """
 
+import logging
 import sys
 import threading
 from typing import Callable, Optional
@@ -17,6 +18,8 @@ if sys.platform != "darwin":
     import keyboard
 
 from config import settings
+
+logger = logging.getLogger("screenmind.capture.hotkey")
 
 
 class HotkeyListener:
@@ -52,16 +55,16 @@ class HotkeyListener:
             return
 
         if sys.platform == "darwin":
-            print("[Hotkey] Disabled on macOS (keyboard library lacks modifier+letter support). Use the dashboard.")
+            logger.info("Disabled on macOS (keyboard library lacks modifier+letter support). Use the dashboard.")
             return
 
         try:
             keyboard.add_hotkey(self._bookmark_hotkey, self._on_bookmark, suppress=False)
-            print(f"[Hotkey] Registered bookmark hotkey: {self._bookmark_hotkey}")
+            logger.info(f"Registered bookmark hotkey: {self._bookmark_hotkey}")
 
             if self._pause_callback:
                 keyboard.add_hotkey(self._pause_hotkey, self._on_pause, suppress=False)
-                print(f"[Hotkey] Registered pause hotkey: {self._pause_hotkey}")
+                logger.info(f"Registered pause hotkey: {self._pause_hotkey}")
 
             if self._voice_start_callback and self._voice_stop_callback:
                 hook1 = keyboard.on_press_key(
@@ -75,29 +78,29 @@ class HotkeyListener:
                     suppress=False,
                 )
                 self._voice_hooks = [hook1, hook2]
-                print(f"[Hotkey] Registered voice memo hotkey: {self._voice_hotkey}")
+                logger.info(f"Registered voice memo hotkey: {self._voice_hotkey}")
 
             self._running = True
         except Exception as e:
-            print(f"[Hotkey] Failed to register hotkey: {e}")
-            print("[Hotkey] Try running as administrator for global hotkey support.")
+            logger.error(f"Failed to register hotkey: {e}")
+            logger.info("Try running as administrator for global hotkey support.")
 
     def _on_bookmark(self):
         """Called when the bookmark hotkey is pressed."""
-        print(f"[Hotkey] Bookmark triggered! ({self._bookmark_hotkey})")
+        logger.info(f"Bookmark triggered! ({self._bookmark_hotkey})")
         try:
             self._bookmark_callback()
         except Exception as e:
-            print(f"[Hotkey] Error in bookmark callback: {e}")
+            logger.error(f"Error in bookmark callback: {e}")
 
     def _on_pause(self):
         """Called when the pause hotkey is pressed."""
-        print(f"[Hotkey] Pause toggle triggered! ({self._pause_hotkey})")
+        logger.info(f"Pause toggle triggered! ({self._pause_hotkey})")
         try:
             if self._pause_callback:
                 self._pause_callback()
         except Exception as e:
-            print(f"[Hotkey] Error in pause callback: {e}")
+            logger.error(f"Error in pause callback: {e}")
 
     def _on_voice_key_down(self, event):
         """Called when voice hotkey key is pressed — check modifiers + cooldown."""
@@ -113,11 +116,11 @@ class HotkeyListener:
         all_held = all(keyboard.is_pressed(m) for m in modifiers)
         if all_held:
             self._voice_recording = True
-            print(f"[Hotkey] Voice memo started ({self._voice_hotkey})")
+            logger.info(f"Voice memo started ({self._voice_hotkey})")
             try:
                 self._voice_start_callback()
             except Exception as e:
-                print(f"[Hotkey] Error in voice start callback: {e}")
+                logger.error(f"Error in voice start callback: {e}")
                 self._voice_recording = False
 
     def _on_voice_key_up(self, event):
@@ -127,11 +130,11 @@ class HotkeyListener:
             return
         self._voice_recording = False
         self._voice_cooldown = time.time() + 2.0  # 2s cooldown before next start
-        print(f"[Hotkey] Voice memo stopped ({self._voice_hotkey})")
+        logger.info(f"Voice memo stopped ({self._voice_hotkey})")
         try:
             self._voice_stop_callback()
         except Exception as e:
-            print(f"[Hotkey] Error in voice stop callback: {e}")
+            logger.error(f"Error in voice stop callback: {e}")
 
     def stop(self):
         """Unregister all global hotkeys."""
@@ -149,7 +152,7 @@ class HotkeyListener:
             pass
 
         self._running = False
-        print("[Hotkey] Stopped listening.")
+        logger.info("Stopped listening.")
 
     @property
     def is_running(self) -> bool:

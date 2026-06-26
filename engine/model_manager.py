@@ -3,6 +3,7 @@ Model Manager for ScreenMind
 Handles llama-server process lifecycle, GGUF model downloads, and model switching.
 """
 
+import logging
 import os
 import shutil
 import subprocess
@@ -14,6 +15,8 @@ from pathlib import Path
 from typing import Optional, Callable
 
 from config import settings
+
+logger = logging.getLogger("screenmind.engine.model_manager")
 
 
 # Available models with HuggingFace download info
@@ -130,7 +133,7 @@ def cancel_download() -> bool:
         dl = dict(_download_state)
         if dl["active"] and dl["status"] == "downloading":
             _cancel_download_flag = True
-            print("[ModelManager] Cancel requested")
+            logger.info("Cancel requested")
             return True
     return False
 
@@ -231,9 +234,9 @@ def _cleanup_incomplete_cache(hf_repo: str) -> None:
                 except OSError:
                     pass
             if removed:
-                print(f"[ModelManager] Cleaned up {removed} incomplete file(s) for {hf_repo}")
+                logger.info(f"Cleaned up {removed} incomplete file(s) for {hf_repo}")
     except Exception as e:
-        print(f"[ModelManager] Cache cleanup error: {e}")
+        logger.debug(f"Cache cleanup error: {e}")
 
 
 def _do_download(key: str) -> bool:
@@ -254,7 +257,7 @@ def _do_download(key: str) -> bool:
         downloaded_bytes=0, message=f"Downloading {info['name']}...",
     )
 
-    print(f"[ModelManager] Downloading {info['name']} from {info['hf_repo']}...")
+    logger.info(f"Downloading {info['name']} from {info['hf_repo']}...")
 
     try:
         # Use hf_hub_download() Python API — `python -m huggingface_hub` is NOT
@@ -287,7 +290,7 @@ def _do_download(key: str) -> bool:
             with _download_state_lock:
                 should_cancel = _cancel_download_flag
             if should_cancel:
-                print(f"[ModelManager] Download cancelled: {info['name']}")
+                logger.info(f"Download cancelled: {info['name']}")
                 try:
                     proc.kill()
                     proc.wait(timeout=10)
@@ -324,18 +327,18 @@ def _do_download(key: str) -> bool:
 
 
         if proc.returncode == 0:
-            print(f"[ModelManager] Download complete: {info['name']}")
+            logger.info(f"Download complete: {info['name']}")
             err_file.close()
             return True
         else:
             err_file.seek(0)
             stderr = err_file.read().decode(errors="replace")[:200]
             err_file.close()
-            print(f"[ModelManager] Download failed: {stderr}")
+            logger.error(f"Download failed: {stderr}")
             _set_download_state(status="error", message=f"Download failed: {stderr[:100]}")
             return False
     except Exception as e:
-        print(f"[ModelManager] Download error: {e}")
+        logger.error(f"Download error: {e}")
         _set_download_state(status="error", message=f"Error: {str(e)[:100]}")
         try:
             err_file.close()
@@ -358,7 +361,7 @@ def start_server(model_key: Optional[str] = None, timeout: int = 60) -> bool:
     key = model_key or settings.active_model
     info = get_model_info(key)
     if not info:
-        print(f"[ModelManager] Unknown model: {key}")
+        logger.warning(f"Unknown model: {key}")
         return False
 
     with _server_lock:
@@ -408,7 +411,7 @@ def start_server(model_key: Optional[str] = None, timeout: int = 60) -> bool:
         if settings.kv_cache_quant:
             cmd.extend(["--cache-type-k", "q8_0", "--cache-type-v", "q4_0"])
 
-        print(f"[ModelManager] Starting llama-server: {info['name']} on port {port} (timeout={timeout}s)")
+        logger.info(f"Starting llama-server: {info['name']} on port {port} (timeout={timeout}s)")
 
         try:
             startupinfo = None
@@ -431,7 +434,7 @@ def start_server(model_key: Optional[str] = None, timeout: int = 60) -> bool:
             for i in range(timeout):
                 time.sleep(1)
                 if _server_process.poll() is not None:
-                    print(f"[ModelManager] Server exited early (code: {_server_process.returncode})")
+                    logger.warning(f"Server exited early (code: {_server_process.returncode})")
                     _server_process = None
                     return False
                 try:
@@ -439,29 +442,29 @@ def start_server(model_key: Optional[str] = None, timeout: int = 60) -> bool:
                     r = httpx.get(f"http://127.0.0.1:{port}/health", timeout=2)
                     if r.status_code == 200:
                         _active_model_key = key
-                        print(f"[ModelManager] Server ready ({i+1}s)")
+                        logger.info(f"Server ready ({i+1}s)")
                         return True
                 except Exception:
                     pass
 
-            print(f"[ModelManager] Server failed to start within {timeout}s")
+            logger.warning(f"Server failed to start within {timeout}s")
             stop_server()
             return False
 
         except FileNotFoundError:
-            print("[ModelManager] llama-server not found.")
+            logger.error("llama-server not found.")
             if sys.platform == "win32":
-                print("[ModelManager]   Run: python setup_llama.py")
-                print("[ModelManager]   Or download from: https://github.com/ggml-org/llama.cpp/releases")
+                logger.error("  Run: python setup_llama.py")
+                logger.error("  Or download from: https://github.com/ggml-org/llama.cpp/releases")
             elif sys.platform == "darwin":
-                print("[ModelManager]   Run: brew install llama.cpp")
-                print("[ModelManager]   Or:  python setup_llama.py")
+                logger.error("  Run: brew install llama.cpp")
+                logger.error("  Or:  python setup_llama.py")
             else:
-                print("[ModelManager]   Run: python setup_llama.py")
-                print("[ModelManager]   Or download from: https://github.com/ggml-org/llama.cpp/releases")
+                logger.error("  Run: python setup_llama.py")
+                logger.error("  Or download from: https://github.com/ggml-org/llama.cpp/releases")
             return False
         except Exception as e:
-            print(f"[ModelManager] Failed to start server: {e}")
+            logger.error(f"Failed to start server: {e}")
             return False
 
 
@@ -480,7 +483,7 @@ def stop_server():
                 pass
             _server_process = None
             _active_model_key = None
-            print("[ModelManager] Server stopped")
+            logger.info("Server stopped")
 
 
 def switch_model(key: str) -> bool:
@@ -494,10 +497,10 @@ def switch_model(key: str) -> bool:
     if not info:
         return False
     if not is_model_downloaded(key):
-        print(f"[ModelManager] Cannot switch to {key} — not downloaded")
+        logger.warning(f"Cannot switch to {key} — not downloaded")
         return False
     if not _download_lock.acquire(blocking=False):
-        print("[ModelManager] Lifecycle in progress, switch ignored")
+        logger.warning("Lifecycle in progress, switch ignored")
         return False
     try:
         _clear_error_state()
@@ -528,7 +531,7 @@ def restart_server() -> bool:
     Sets transient 'starting' state so UI shows "Booting up..." instead of "error".
     """
     if not _download_lock.acquire(blocking=False):
-        print("[ModelManager] Lifecycle in progress, retry ignored")
+        logger.warning("Lifecycle in progress, retry ignored")
         return False
 
     try:
@@ -664,7 +667,7 @@ def _check_model_disk_space(key: str) -> bool:
         if usage.free < required:
             free_gb = usage.free / (1024**3)
             need_gb = required / (1024**3)
-            print(f"[ModelManager] WARNING: Low disk space! Free: {free_gb:.1f}GB, Need: ~{need_gb:.1f}GB")
+            logger.warning(f"Low disk space! Free: {free_gb:.1f}GB, Need: ~{need_gb:.1f}GB")
             _set_download_state(
                 status="error",
                 message=f"Not enough disk space. Free: {free_gb:.1f}GB, Need: ~{need_gb:.1f}GB",
@@ -687,7 +690,7 @@ def download_and_start(key: str) -> bool:
     On failure, leaves error state sticky so the retry screen shows. (#4)
     """
     if not _download_lock.acquire(blocking=False):
-        print(f"[ModelManager] Lifecycle already in progress, rejecting {key}")
+        logger.warning(f"Lifecycle already in progress, rejecting {key}")
         return False
 
     try:

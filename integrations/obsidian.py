@@ -3,9 +3,12 @@ Obsidian Integration
 Auto-exports daily summaries to an Obsidian vault as markdown files.
 """
 
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger("screenmind.integrations.obsidian")
 
 
 def export_summary(vault_path: str, date_str: str, summary: str, standup: str = "", activity_count: int = 0) -> bool:
@@ -25,7 +28,7 @@ def export_summary(vault_path: str, date_str: str, summary: str, standup: str = 
         True if export succeeded, False otherwise.
     """
     if not vault_path or not Path(vault_path).is_dir():
-        print(f"[Obsidian] Vault path not found: {vault_path}")
+        logger.warning(f"Vault path not found: {vault_path}")
         return False
 
     # Create ScreenMind subfolder in vault
@@ -74,8 +77,8 @@ def export_summary(vault_path: str, date_str: str, summary: str, standup: str = 
 
     try:
         filepath.write_text(content, encoding="utf-8")
-        print(f"[Obsidian] Exported summary to {filepath}")
+        logger.info(f"Exported summary to {filepath}")
         return True
     except Exception as e:
-        print(f"[Obsidian] Export failed: {e}")
+        logger.error(f"Export failed: {e}")
         return False

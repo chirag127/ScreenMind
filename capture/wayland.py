@@ -4,6 +4,7 @@ Tries grim first, falls back to XDG Desktop Portal.
 No compositor allowlist — runtime failure counter handles tier selection.
 """
 
+import logging
 import io
 import json
 import os
@@ -17,6 +18,8 @@ from typing import Optional, Tuple
 from PIL import Image
 
 from config import settings
+
+logger = logging.getLogger("screenmind.capture.wayland")
 
 
 class WaylandScreenCapture:
@@ -51,15 +54,15 @@ class WaylandScreenCapture:
         self._has_grim = shutil.which("grim") is not None
 
         if self._has_grim:
-            print(f"[ScreenCapture] Wayland: grim found (compositor: {self._compositor or 'unknown'})")
+            logger.info(f"Wayland: grim found (compositor: {self._compositor or 'unknown'})")
         else:
             self._portal_available = self._check_portal()
             if self._portal_available:
-                print("[ScreenCapture] Wayland: using XDG Portal (may prompt for permission)")
+                logger.info("Wayland: using XDG Portal (may prompt for permission)")
             else:
-                print("[ScreenCapture] Wayland: no capture method available.")
-                print("[ScreenCapture]   Install grim: sudo pacman -S grim  (or apt install grim)")
-                print("[ScreenCapture]   Or ensure xdg-desktop-portal is running + python3-gi installed")
+                logger.info("Wayland: no capture method available.")
+                logger.info("Install grim: sudo pacman -S grim  (or apt install grim)")
+                logger.info("Or ensure xdg-desktop-portal is running + python3-gi installed")
 
     def _detect_compositor(self) -> Optional[str]:
         """Detect compositor type (cached at init — doesn't change at runtime)."""
@@ -88,7 +91,7 @@ class WaylandScreenCapture:
             self._grim_failures += 1
             if self._grim_failures >= 3:
                 # 3 consecutive failures — try portal fallback
-                print(f"[ScreenCapture] grim failed {self._grim_failures}x — trying XDG Portal")
+                logger.error(f"grim failed {self._grim_failures}x — trying XDG Portal")
                 if not self._portal_available:
                     self._portal_available = self._check_portal()
                 if self._portal_available:
@@ -96,7 +99,7 @@ class WaylandScreenCapture:
                     if portal_result is not None:
                         # Portal works — permanently switch away from grim
                         self._grim_disabled = True
-                        print("[ScreenCapture] Switched to XDG Portal permanently")
+                        logger.info("Switched to XDG Portal permanently")
                         return portal_result
                 # Portal unavailable or failed — keep trying grim
                 # (don't latch _grim_disabled, just reset counter)
@@ -105,7 +108,7 @@ class WaylandScreenCapture:
         elif self._portal_available:
             return self._grab_portal()
         if not self._error_logged:
-            print("[ScreenCapture] No Wayland capture method available. Skipping.")
+            logger.debug("No Wayland capture method available. Skipping.")
             self._error_logged = True
         return None
 
@@ -161,18 +164,18 @@ class WaylandScreenCapture:
             result = subprocess.run(cmd, capture_output=True, timeout=10)
             if result.returncode != 0:
                 if not self._grim_error_logged:
-                    print(f"[ScreenCapture] grim failed: {result.stderr.decode()[:200]}")
+                    logger.error(f"grim failed: {result.stderr.decode()[:200]}")
                     self._grim_error_logged = True
                 return None
             return Image.open(io.BytesIO(result.stdout)).convert("RGB")
         except subprocess.TimeoutExpired:
             if not self._grim_error_logged:
-                print("[ScreenCapture] grim timed out")
+                logger.info("grim timed out")
                 self._grim_error_logged = True
             return None
         except Exception as e:
             if not self._grim_error_logged:
-                print(f"[ScreenCapture] grim error: {e}")
+                logger.error(f"grim error: {e}")
                 self._grim_error_logged = True
             return None
 
@@ -255,12 +258,11 @@ class WaylandScreenCapture:
         try:
             from gi.repository import Gio, GLib
         except ImportError:
-            print("[ScreenCapture] python-gi not available for portal capture")
+            logger.warning("python-gi not available for portal capture")
             self._portal_available = False
             return None
 
         import uuid
-
         result_holder = {"uri": None, "done": False}
         handle_token = "screenmind_" + uuid.uuid4().hex[:8]
 
@@ -305,7 +307,7 @@ class WaylandScreenCapture:
                 time.sleep(0.05)
 
             if not result_holder["uri"]:
-                print("[ScreenCapture] Portal: no URI received (cancelled or timed out)")
+                logger.info("Portal: no URI received (cancelled or timed out)")
                 return None
 
             # Parse file:// URI → local path
@@ -313,7 +315,7 @@ class WaylandScreenCapture:
             portal_path = Path(uri[7:]) if uri.startswith("file://") else Path(uri)
 
             if not portal_path.exists():
-                print(f"[ScreenCapture] Portal: file not found: {portal_path}")
+                logger.warning(f"Portal: file not found: {portal_path}")
                 return None
 
             # Load image, force pixel read, then delete portal temp file
@@ -328,7 +330,7 @@ class WaylandScreenCapture:
             return img
 
         except Exception as e:
-            print(f"[ScreenCapture] Portal error: {e}")
+            logger.error(f"Portal error: {e}")
             return None
         finally:
             bus.signal_unsubscribe(sub_id)

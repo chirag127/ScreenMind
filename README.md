@@ -440,6 +440,8 @@ All settings configurable via `.env`, environment variables, or the **Settings**
 | `RETENTION_DAYS` | `7` | Auto-delete data older than N days (0 = forever) |
 | `ENCRYPTION_ENABLED` | `false` | Encrypt screenshots at rest |
 | `SENSITIVE_FILTER_ENABLED` | `true` | Redact credit cards, SSNs, API keys |
+| `SCREENMIND_LOG_LEVEL` | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `SCREENMIND_LOG_FILE` | *(none)* | Path to a log file (rotating, 10MB × 3 backups) |
 
 > See `.env.example` for the full list.
 

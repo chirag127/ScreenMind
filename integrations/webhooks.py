@@ -7,6 +7,7 @@ Webhook Integration (v2)
 - HMAC signing
 """
 
+import logging
 import hashlib
 import hmac
 import json
@@ -16,6 +17,8 @@ import urllib.request
 import urllib.error
 from collections import deque
 from datetime import datetime
+
+logger = logging.getLogger("screenmind.integrations.webhooks")
 
 
 # ── Delivery Log ────────────────────────────────────────────────────────
@@ -141,20 +144,20 @@ def _send(url: str, payload: dict, secret: str, custom_headers: dict, event: str
             status_code = resp.status
             _log_delivery(url, event, "ok", status_code=status_code, attempt=attempt)
             label = f"(retry #{attempt})" if attempt > 1 else ""
-            print(f"[Webhook] {event} → {url[:50]} → {status_code} {label}")
+            logger.info(f"{event} → {url[:50]} → {status_code} {label}")
             return True
 
     except urllib.error.HTTPError as e:
         _log_delivery(url, event, "failed", status_code=e.code, error=str(e), attempt=attempt)
-        print(f"[Webhook] Failed ({event} → {url[:50]}): HTTP {e.code}")
+        logger.error(f"Failed ({event} → {url[:50]}): HTTP {e.code}")
         return False
     except urllib.error.URLError as e:
         _log_delivery(url, event, "failed", error=str(e.reason), attempt=attempt)
-        print(f"[Webhook] Failed ({event} → {url[:50]}): {e.reason}")
+        logger.error(f"Failed ({event} → {url[:50]}): {e.reason}")
         return False
     except Exception as e:
         _log_delivery(url, event, "failed", error=str(e), attempt=attempt)
-        print(f"[Webhook] Error ({event} → {url[:50]}): {e}")
+        logger.error(f"Error ({event} → {url[:50]}): {e}")
         return False
 
 

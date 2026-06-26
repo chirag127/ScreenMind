@@ -14,7 +14,10 @@ from config import settings
 from engine.embedder import Embedder
 from storage.database import Database
 
+import logging
 import api.dependencies as deps
+
+logger = logging.getLogger("screenmind.api.server")
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -57,7 +60,7 @@ def create_app(database: Database, capture_worker=None, analysis_worker=None, em
             embedder = Embedder()
             embedder._ensure_model()
         except Exception:
-            print("[API] Embedder unavailable — search will be limited")
+            logger.warning("Embedder unavailable — search will be limited")
 
     # Initialize shared dependencies for all route modules
     deps.init(database, embedder, capture_worker, analysis_worker, audio_worker)
@@ -88,7 +91,6 @@ def create_app(database: Database, capture_worker=None, analysis_worker=None, em
     from api.routes.models import router as models_router
     from api.routes.data import router as data_router
     from api.routes.memos import router as memos_router
-
     app.include_router(auth_router)
     app.include_router(capture_router)
     app.include_router(timeline_router)

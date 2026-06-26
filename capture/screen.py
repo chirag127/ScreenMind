@@ -5,6 +5,7 @@ On Wayland, delegates to WaylandScreenCapture (grim / XDG Portal).
 Saves as JPEG with configurable quality to date-organized directories.
 """
 
+import logging
 import io
 import sys
 from datetime import datetime
@@ -17,6 +18,8 @@ from PIL import Image
 
 from config import settings
 from platform_support import is_wayland
+
+logger = logging.getLogger("screenmind.capture.screen")
 
 
 class ScreenCapture:
@@ -35,8 +38,8 @@ class ScreenCapture:
                 from capture.wayland import WaylandScreenCapture
                 self._backend = WaylandScreenCapture()
             except Exception as e:
-                print(f"[ScreenCapture] Wayland backend failed to init: {e}")
-                print("[ScreenCapture] Capture will be unavailable.")
+                logger.error(f"Wayland backend failed to init: {e}")
+                logger.warning("Capture will be unavailable.")
                 # self._backend stays None — capture() returns None gracefully
         else:
             self._sct = mss.mss()
@@ -85,7 +88,7 @@ class ScreenCapture:
                 return filepath, img
 
             except Exception as e:
-                print(f"[ScreenCapture] Error capturing screenshot: {e}")
+                logger.error(f"Error capturing screenshot: {e}")
                 return None
 
         return None  # both _backend and _sct are None (init failure)
@@ -117,7 +120,7 @@ class ScreenCapture:
                 return buffer.getvalue(), img
 
             except Exception as e:
-                print(f"[ScreenCapture] Error capturing to bytes: {e}")
+                logger.error(f"Error capturing to bytes: {e}")
                 return None
 
         return None

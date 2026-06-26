@@ -3,6 +3,7 @@ Voice Recorder — Captures mic audio + screenshot simultaneously.
 Used for voice memo feature: press hotkey → speak → release → transcribe.
 """
 
+import logging
 import io
 import threading
 import time
@@ -15,6 +16,8 @@ import numpy as np
 
 from config import settings
 from capture.screen import ScreenCapture
+
+logger = logging.getLogger("screenmind.capture.voice_recorder")
 
 
 SAMPLE_RATE = 16000  # Whisper/Gemma expects 16kHz
@@ -41,7 +44,6 @@ class VoiceRecorder:
             return
 
         import sounddevice as sd
-
         self._recording = True
         self._audio_data = []
         self._start_time = time.time()
@@ -57,7 +59,7 @@ class VoiceRecorder:
             callback=self._audio_callback,
         )
         self._stream.start()
-        print("[VoiceMemo] Recording started...")
+        logger.info("Recording started...")
 
     def stop(self) -> Optional[Tuple[bytes, Optional[Path], Path]]:
         """
@@ -72,11 +74,11 @@ class VoiceRecorder:
         self._stream.close()
 
         duration = time.time() - self._start_time
-        print(f"[VoiceMemo] Recording stopped ({duration:.1f}s)")
+        logger.info(f"Recording stopped ({duration:.1f}s)")
 
         # Too short — probably accidental
         if duration < 0.5:
-            print("[VoiceMemo] Too short, discarding")
+            logger.warning("Too short, discarding")
             return None
 
         # Convert to WAV bytes

@@ -1,11 +1,14 @@
 """Summary & Standup routes — AI-generated daily summaries."""
 
+import logging
 import asyncio
 
 from fastapi import APIRouter, Query
 
 from config import settings
 from api.dependencies import db
+
+logger = logging.getLogger("screenmind.api.routes.summary")
 
 router = APIRouter(prefix="/api", tags=["summary"])
 
@@ -181,14 +184,14 @@ def _fire_summary_integrations(date_str: str, summary: str, standup: str, activi
             from integrations.obsidian import export_summary
             export_summary(settings.obsidian_vault_path, date_str, summary, standup, activity_count)
     except Exception as e:
-        print(f"[Integration] Obsidian error: {e}")
+        logger.error(f"Obsidian error: {e}")
 
     try:
         if settings.notion_enabled and settings.notion_token:
             from integrations.notion import export_summary
             export_summary(settings.notion_token, settings.notion_database_id, date_str, summary, standup, activity_count)
     except Exception as e:
-        print(f"[Integration] Notion error: {e}")
+        logger.error(f"Notion error: {e}")
 
     try:
         if settings.webhook_enabled and settings.webhook_url:
@@ -200,4 +203,4 @@ def _fire_summary_integrations(date_str: str, summary: str, standup: str, activi
                 "activity_count": activity_count,
             }, settings.webhook_url, settings.webhook_secret, settings.webhook_events, settings.webhook_headers)
     except Exception as e:
-        print(f"[Integration] Webhook error: {e}")
+        logger.error(f"Webhook error: {e}")

@@ -4,12 +4,15 @@ Detects active git repositories and enriches coding activities
 with branch, commit, and file change information.
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Optional, List
 
 from config import settings
 from storage.models import DevContext
+
+logger = logging.getLogger("screenmind.engine.dev_context")
 
 
 class DevContextDetector:
@@ -95,10 +98,10 @@ class DevContextDetector:
             return self._extract_context(repo)
 
         except ImportError:
-            print("[DevContext] gitpython not installed, skipping git context")
+            logger.debug("gitpython not installed, skipping git context")
             return None
         except Exception as e:
-            print(f"[DevContext] Error getting context: {e}")
+            logger.error(f"Error getting context: {e}")
             return None
 
     def _find_active_repo(

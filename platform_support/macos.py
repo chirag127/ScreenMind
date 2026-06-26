@@ -4,10 +4,13 @@ Uses AppKit/NSWorkspace for window detection.
 Accessibility via AXUIElement (requires accessibility permission).
 """
 
+import logging
 import subprocess
 from typing import Optional, Tuple
 
 from platform_support.base import PlatformAdapter
+
+logger = logging.getLogger("screenmind.platform_support.macos")
 
 
 class MacOSAdapter(PlatformAdapter):
@@ -23,9 +26,9 @@ class MacOSAdapter(PlatformAdapter):
         try:
             from AppKit import NSWorkspace  # type: ignore
             self._appkit_available = True
-            print("[Platform] macOS AppKit initialized")
+            logger.debug("macOS AppKit initialized")
         except ImportError:
-            print("[Platform] macOS AppKit not available (install pyobjc: pip install pyobjc-framework-Cocoa)")
+            logger.warning("macOS AppKit not available (install pyobjc: pip install pyobjc-framework-Cocoa)")
 
         try:
             from ApplicationServices import (  # type: ignore
@@ -33,9 +36,9 @@ class MacOSAdapter(PlatformAdapter):
                 AXUIElementCopyAttributeValue,
             )
             self._ax_available = True
-            print("[Platform] macOS Accessibility initialized")
+            logger.debug("macOS Accessibility initialized")
         except ImportError:
-            print("[Platform] macOS Accessibility not available (install pyobjc-framework-ApplicationServices)")
+            logger.warning("macOS Accessibility not available (install pyobjc-framework-ApplicationServices)")
 
     @property
     def platform_name(self) -> str:
@@ -139,13 +142,13 @@ class MacOSAdapter(PlatformAdapter):
             if texts:
                 result = '\n'.join(texts)
                 if len(result.strip()) > 20:
-                    print(f"[A11y] macOS: Extracted {len(texts)} elements")
+                    logger.debug(f"macOS: Extracted {len(texts)} elements")
                     return result.strip(), "a11y"
 
             return None, "none"
 
         except Exception as e:
-            print(f"[A11y] macOS extraction failed: {e}")
+            logger.error(f"macOS extraction failed: {e}")
             return None, "none"
 
     def _walk_ax_tree(self, element, texts: list, depth: int, max_depth: int = 8):

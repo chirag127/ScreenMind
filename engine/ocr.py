@@ -4,10 +4,13 @@ Extracts visible text to enhance Gemma 4's analysis context.
 Uses easyocr with dark-theme preprocessing for robust recognition.
 """
 
+import logging
 import time
 from typing import Optional
 
 from PIL import Image, ImageOps, ImageEnhance
+
+logger = logging.getLogger("screenmind.engine.ocr")
 
 
 class OCRExtractor:
@@ -30,9 +33,9 @@ class OCRExtractor:
                     gpu=True,       # Use GPU if available, falls back to CPU
                     verbose=False,
                 )
-                print("[OCR] EasyOCR initialized")
+                logger.info("EasyOCR initialized")
             except Exception as e:
-                print(f"[OCR] EasyOCR unavailable, skipping text extraction: {e}")
+                logger.warning(f"EasyOCR unavailable, skipping text extraction: {e}")
                 self._available = False
 
     def _preprocess(self, image: Image.Image) -> Image.Image:
@@ -141,12 +144,12 @@ class OCRExtractor:
             full_text = "\n".join(texts)
 
             if texts:
-                print(f"[OCR] Extracted {len(texts)} text blocks in {elapsed:.1f}s")
+                logger.debug(f"Extracted {len(texts)} text blocks in {elapsed:.1f}s")
 
             return (full_text if full_text else None), boxes
 
         except Exception as e:
-            print(f"[OCR] Extraction failed: {e}")
+            logger.error(f"Extraction failed: {e}")
             return None, []
 
     @property

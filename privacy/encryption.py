@@ -17,6 +17,7 @@ Usage:
     return serve_image(filepath)
 """
 
+import logging
 import io
 import os
 import sys
@@ -24,6 +25,8 @@ from pathlib import Path
 from typing import Optional
 
 from config import settings
+
+logger = logging.getLogger("screenmind.privacy.encryption")
 
 # Magic header to identify encrypted files (16 bytes)
 MAGIC = b"OPENRECALL_ENC\x01\x00"
@@ -69,7 +72,7 @@ def _get_or_create_key() -> bytes:
     if keyring:
         try:
             keyring.set_password("screenmind", "encryption_key", key.decode())
-            print("[Encryption] Key stored in OS keyring")
+            logger.info("Key stored in OS keyring")
         except Exception:
             pass
 
@@ -78,7 +81,7 @@ def _get_or_create_key() -> bytes:
     # Restrict permissions (Windows: best effort)
     if sys.platform != "win32":
         os.chmod(str(key_file), 0o600)
-    print("[Encryption] Generated new encryption key")
+    logger.info("Generated new encryption key")
 
     return key
 
@@ -92,10 +95,10 @@ def _get_fernet():
             key = _get_or_create_key()
             _fernet_instance = Fernet(key)
         except ImportError:
-            print("[Encryption] 'cryptography' package not installed — encryption disabled")
+            logger.warning("'cryptography' package not installed — encryption disabled")
             return None
         except Exception as e:
-            print(f"[Encryption] Failed to initialize: {e}")
+            logger.error(f"Failed to initialize: {e}")
             return None
     return _fernet_instance
 
@@ -144,7 +147,7 @@ def encrypt_image(filepath: Path) -> bool:
 
         return True
     except Exception as e:
-        print(f"[Encryption] Failed to encrypt {filepath.name}: {e}")
+        logger.error(f"Failed to encrypt {filepath.name}: {e}")
         return False
 
 
@@ -164,14 +167,14 @@ def decrypt_image_bytes(filepath: Path) -> Optional[bytes]:
         if raw[:MAGIC_LEN] == MAGIC:
             fernet = _get_fernet()
             if fernet is None:
-                print(f"[Encryption] Cannot decrypt {filepath.name} — no key available")
+                logger.error(f"Cannot decrypt {filepath.name} — no key available")
                 return None
             return fernet.decrypt(raw[MAGIC_LEN:])
         else:
             # Not encrypted — return as-is
             return raw
     except Exception as e:
-        print(f"[Encryption] Failed to decrypt {filepath.name}: {e}")
+        logger.error(f"Failed to decrypt {filepath.name}: {e}")
         return None
 
 

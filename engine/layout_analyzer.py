@@ -12,6 +12,8 @@ OCR provides ACCURATE TEXT — never understands layout (which it's bad at).
 Each tool does what it's best at.
 """
 
+import logging
+
 import io
 import json
 import re
@@ -19,6 +21,8 @@ import time
 from typing import List, Dict, Optional, Tuple
 
 from PIL import Image
+
+logger = logging.getLogger("screenmind.engine.layout_analyzer")
 
 
 # ── Layout Region Detection ──────────────────────────────────────────────────
@@ -81,9 +85,9 @@ def detect_layout(image: Image.Image, ollama_client=None, model: str = "") -> Li
             max_tokens=1200,
         )
         elapsed = time.time() - start
-        print(f"[LayoutAnalyzer] Gemma layout detection in {elapsed:.1f}s")
+        logger.info(f"Gemma layout detection in {elapsed:.1f}s")
     except Exception as e:
-        print(f"[LayoutAnalyzer] Gemma layout detection failed: {e}")
+        logger.error(f"Gemma layout detection failed: {e}")
         return _fallback_regions()
 
     return _parse_layout_json(raw)
@@ -130,16 +134,16 @@ def _parse_layout_json(raw: str) -> List[Dict]:
                     partial = partial.rstrip(', \n') + ']'
                 try:
                     regions = json.loads(partial)
-                    print(f"[LayoutAnalyzer] Recovered {len(regions)} regions from truncated JSON")
+                    logger.debug(f"Recovered {len(regions)} regions from truncated JSON")
                     return _validate_regions(regions)
                 except json.JSONDecodeError:
                     pass
 
-        print(f"[LayoutAnalyzer] Could not parse JSON, using fallback. Raw: {raw[:200]}")
+        logger.debug(f"Could not parse JSON, using fallback. Raw: {raw[:200]}")
         return _fallback_regions()
 
     except Exception as e:
-        print(f"[LayoutAnalyzer] JSON parse error: {e}, using fallback")
+        logger.debug(f"JSON parse error: {e}, using fallback")
         return _fallback_regions()
 
 
@@ -471,7 +475,7 @@ def organize_with_layout(
 
     # Step 1: Detect layout regions
     regions = detect_layout(image)
-    print(f"[LayoutAnalyzer] Detected {len(regions)} regions: "
+    logger.info(f"Detected {len(regions)} regions: "
           f"{', '.join(r['name'] for r in regions)}")
 
     # Step 2: Organize OCR text using regions
@@ -479,6 +483,6 @@ def organize_with_layout(
 
     # Count classification stats
     total_boxes = len([b for b in ocr_boxes if len(b.get("text", "").strip()) > 1])
-    print(f"[LayoutAnalyzer] Organized {total_boxes} text blocks into {len(regions)} regions")
+    logger.info(f"Organized {total_boxes} text blocks into {len(regions)} regions")
 
     return organized, regions

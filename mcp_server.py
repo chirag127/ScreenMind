@@ -19,6 +19,7 @@ Claude Desktop config (~/.claude/claude_desktop_config.json):
 
 import json
 import os
+import logging
 import sys
 
 # ── CRITICAL: Redirect stdout prints to stderr ──────────────────────────
@@ -41,13 +42,15 @@ from config import settings
 from engine.embedder import Embedder
 from storage.database import Database
 
+logger = logging.getLogger("screenmind.mcp_server")
+
 # ── Initialize ──────────────────────────────────────────────────────────
 db = Database()
 embedder = Embedder()
 try:
     embedder._ensure_model()
 except Exception:
-    print("[MCP] Warning: Embedder unavailable — semantic search disabled", file=sys.stderr)
+    logger.warning("Embedder unavailable — semantic search disabled")
     embedder = None
 
 mcp = FastMCP("ScreenMind")
@@ -428,7 +431,6 @@ def get_screenshot(activity_id: int) -> str:
         activity_id: The activity ID (from search or timeline results)
     """
     from pathlib import Path
-
     conn = db._get_conn()
     row = conn.execute(
         "SELECT screenshot_path FROM activities WHERE id = ?",
@@ -480,5 +482,5 @@ def get_status() -> str:
 if __name__ == "__main__":
     # Restore real stdout for MCP protocol
     sys.stdout = _real_stdout
-    print("[MCP] ScreenMind MCP server starting (stdio transport)...", file=sys.stderr)
+    logger.info("ScreenMind MCP server starting (stdio transport)...")
     mcp.run(transport="stdio")

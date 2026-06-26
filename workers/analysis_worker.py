@@ -16,6 +16,7 @@ Per-app pHash cache avoids redundant Gemma calls for similar screens:
 """
 
 import asyncio
+import logging
 import re
 import time
 from collections import OrderedDict, deque
@@ -34,6 +35,8 @@ from engine.ocr import OCRExtractor
 from storage.database import Database
 from storage.models import ScreenshotEntry, ActivityRecord
 from workers.capture_worker import CaptureResult
+
+logger = logging.getLogger("screenmind.workers.analysis_worker")
 
 # Regex for extracting URLs from OCR/A11y text
 _URL_RE = re.compile(
@@ -120,7 +123,7 @@ class AnalysisWorker:
                 self._embedder = Embedder()
                 self._embedder._ensure_model()  # Pre-load
             except Exception as e:
-                print(f"[AnalysisWorker] Embedder unavailable: {e}")
+                logger.warning(f"Embedder unavailable: {e}")
                 self._embedder_available = False
 
     async def run(self):
@@ -130,7 +133,7 @@ class AnalysisWorker:
         # Pre-load embedder in background
         await asyncio.get_event_loop().run_in_executor(None, self._ensure_embedder)
 
-        print("[AnalysisWorker] Started. Waiting for screenshots...")
+        logger.info("Started. Waiting for screenshots...")
         self._last_queue_log = 0  # Track periodic queue depth logging
 
         # Startup scan: count unanalyzed entries from previous session
@@ -140,7 +143,7 @@ class AnalysisWorker:
                 "SELECT COUNT(*) FROM activities WHERE (analyzed = 0 OR summary = 'Skipped (analysis backlog)' OR summary LIKE 'Analysis failed%') AND DATE(timestamp) = DATE('now', 'localtime')"
             ).fetchone()[0]
             if pending:
-                print(f"[AnalysisWorker] Found {pending} unanalyzed entries — will backfill during idle")
+                logger.info(f"Found {pending} unanalyzed entries — will backfill during idle")
         except Exception:
             pass
 
@@ -152,7 +155,7 @@ class AnalysisWorker:
                     if self._priority_items:
                         capture: CaptureResult = self._priority_items.popleft()
                         from_priority = True
-                        print(f"[AnalysisWorker] Resuming priority item ({len(self._priority_items)} remaining)")
+                        logger.info(f"Resuming priority item ({len(self._priority_items)} remaining)")
                     else:
                         capture: CaptureResult = await asyncio.wait_for(
                             self._queue.get(), timeout=2.0
@@ -165,7 +168,7 @@ class AnalysisWorker:
                     qsize = self._queue.qsize()
                     now = time.time()
                     if qsize > 0 and now - self._last_queue_log > 60:
-                        print(f"[AnalysisWorker] Queue: {qsize} screenshots pending")
+                        logger.info(f"Queue: {qsize} screenshots pending")
                         self._last_queue_log = now
                     continue
 
@@ -200,7 +203,7 @@ class AnalysisWorker:
                         )
                     self._cache_skips += 1
                     self._queue.task_done()
-                    print(f"[AnalysisWorker] Skipped stale capture ({age_seconds:.0f}s old)")
+                    logger.debug(f"Skipped stale capture ({age_seconds:.0f}s old)")
                     continue
 
                 await self._process(capture)
@@ -210,7 +213,7 @@ class AnalysisWorker:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"[AnalysisWorker] Unexpected error: {e}")
+                logger.error(f"Unexpected error: {e}")
                 self._errors += 1
 
     async def _process(self, capture: CaptureResult):
@@ -219,7 +222,7 @@ class AnalysisWorker:
 
         # Guard: skip if screenshot was deleted (user cleared timeline mid-queue)
         if capture.filepath and not capture.filepath.exists():
-            print(f"[AnalysisWorker] Skipping — screenshot deleted: {capture.filepath.name}")
+            logger.debug(f"Skipping — screenshot deleted: {capture.filepath.name}")
             return
 
         # Guard: skip if DB row was deleted (user cleared timeline after capture)
@@ -228,7 +231,7 @@ class AnalysisWorker:
                 "SELECT 1 FROM activities WHERE id = ?", (capture.activity_id,)
             ).fetchone()
             if not row_exists:
-                print(f"[AnalysisWorker] Skipping — activity #{capture.activity_id} deleted from DB")
+                logger.debug(f"Skipping — activity #{capture.activity_id} deleted from DB")
                 return
 
         # Use existing DB entry (inserted by CaptureWorker for instant timeline display)
@@ -253,7 +256,7 @@ class AnalysisWorker:
             ocr_boxes_json = None
             text_method = "none"
 
-            print(f"[AnalysisWorker] Processing #{activity_id} ({capture.app_name or 'unknown'})...")
+            logger.info(f"Processing #{activity_id} ({capture.app_name or 'unknown'})...")
 
             # 2a. Use a11y text captured at screenshot time (correct window)
             a11y_text = capture.a11y_text
@@ -323,7 +326,7 @@ class AnalysisWorker:
                     filter_result = filter_sensitive_text(ocr_text, enabled_types)
                     ocr_text = filter_result["clean_text"]
                 except Exception as e:
-                    print(f"[AnalysisWorker] Sensitive filter error: {e}")
+                    logger.warning(f"Sensitive filter error: {e}")
 
             # 2d. Extract URLs from text (for Gemma hint + DB storage)
             found_urls = _extract_all_urls(ocr_text)
@@ -366,7 +369,7 @@ class AnalysisWorker:
                 self._cache_hits += 1
                 elapsed = time.time() - start
                 self._processed += 1
-                print(f"[AnalysisWorker] #{self._processed} in {elapsed:.1f}s: "
+                logger.info(f"#{self._processed} in {elapsed:.1f}s: "
                       f"{cached['analysis'].app_name} ({cached['analysis'].activity_category}) "
                       f"[cache: identical]")
                 return
@@ -386,11 +389,11 @@ class AnalysisWorker:
                         if organized_text:
                             text_method += "+layout"
                     except Exception as e:
-                        print(f"[AnalysisWorker] Text organization failed (non-fatal): {e}")
+                        logger.debug(f"Text organization failed (non-fatal): {e}")
 
                 self._cache_hits += 1
                 tier_label = "cache: minor"
-                print(f"[AnalysisWorker] Processing #{activity_id} [{tier_label}] ...")
+                logger.info(f"Processing #{activity_id} [{tier_label}] ...")
                 # Falls through to: dev_context -> embedding -> DB update -> auto-bookmark
             else:
                 # --- Tier "full": run Gemma analysis + layout detection ---
@@ -426,14 +429,14 @@ class AnalysisWorker:
                             if attempt < max_retries - 1:
                                 wait = 15 * (attempt + 1) if is_oom else 2 ** (attempt + 1)
                                 kind = "OOM" if is_oom else "Error"
-                                print(f"[AnalysisWorker] {kind} (attempt {attempt + 1}), retry in {wait}s: {e}")
+                                logger.warning(f"{kind} (attempt {attempt + 1}), retry in {wait}s: {e}", exc_info=is_oom)
                                 await asyncio.sleep(wait)
                             else:
                                 retry_count = getattr(capture, '_retry_count', 0)
                                 if retry_count < 2 and is_oom:
                                     capture._retry_count = retry_count + 1
                                     await self._queue.put(capture)
-                                    print(f"[AnalysisWorker] Re-queued (attempt {retry_count + 1}/2): {e}")
+                                    logger.warning(f"Re-queued (attempt {retry_count + 1}/2): {e}", exc_info=True)
                                     return None
                                 raise
 
@@ -455,7 +458,7 @@ class AnalysisWorker:
 
                 if _missing and not getattr(capture, '_quality_retried', False):
                     capture._quality_retried = True
-                    print(f"[AnalysisWorker] Missing fields ({', '.join(_missing)}) — retrying analysis...")
+                    logger.debug(f"Missing fields ({', '.join(_missing)}) — retrying analysis...")
                     await asyncio.sleep(1)
                     retry_result = await _run_analysis()
                     if retry_result:
@@ -468,9 +471,9 @@ class AnalysisWorker:
                             retry_missing.append("scene_description")
                         if len(retry_missing) < len(_missing):
                             analysis, layout_regions = retry_analysis, retry_regions
-                            print(f"[AnalysisWorker] Retry filled: {set(_missing) - set(retry_missing)}")
+                            logger.debug(f"Retry filled: {set(_missing) - set(retry_missing)}")
                         else:
-                            print(f"[AnalysisWorker] Retry didn't improve — keeping original")
+                            logger.debug(f"Retry didn't improve — keeping original")
 
                 # Organize text using layout regions + OCR boxes (geometry only, no LLM)
                 organized_text = None
@@ -482,10 +485,10 @@ class AnalysisWorker:
                         regions = layout_regions if layout_regions else cluster_ocr_layout(ocr_boxes, screen_w, screen_h)
                         organized_text = organize_ocr_text(ocr_boxes, regions, screen_w, screen_h)
                         if organized_text:
-                            print(f"[AnalysisWorker] Organized text: {len(organized_text)} chars ({len(regions)} regions)")
+                            logger.debug(f"Organized text: {len(organized_text)} chars ({len(regions)} regions)")
                             text_method += "+layout"
                     except Exception as e:
-                        print(f"[AnalysisWorker] Text organization failed (non-fatal): {e}")
+                        logger.debug(f"Text organization failed (non-fatal): {e}")
 
             # 4. Developer context enrichment (if coding activity)
             #    Runs for both "minor" (git may have changed) and "full" tiers.
@@ -520,7 +523,7 @@ class AnalysisWorker:
                         ),
                     )
                 except Exception as e:
-                    print(f"[AnalysisWorker] Embedding failed: {e}")
+                    logger.debug(f"Embedding failed: {e}")
 
             # 6. Update DB with all results
             analysis_label = f"cache:minor" if tier == "minor" else f"full:{settings.analysis_mode}"
@@ -571,7 +574,7 @@ class AnalysisWorker:
                             "UPDATE activities SET bookmarked = 1 WHERE id = ?", (activity_id,)
                         )
                         self._db._get_conn().commit()
-                        print(f"[AutoBookmark] Bookmarked #{activity_id} (matched: '{kw}')")
+                        logger.info(f"Bookmarked #{activity_id} (matched: '{kw}')")
                         # Fire webhook
                         try:
                             if settings.webhook_enabled and settings.webhook_url:
@@ -594,7 +597,7 @@ class AnalysisWorker:
             # Log with context
             text_len = len(ocr_text) if ocr_text else 0
             parts = [
-                f"[AnalysisWorker] #{self._processed} in {elapsed:.1f}s:",
+                f"#{self._processed} in {elapsed:.1f}s:",
                 f"{analysis.app_name} ({analysis.activity_category})",
                 f"-- {analysis.activity_summary[:50]}",
                 f"[text: {text_len} chars via {text_method}]",
@@ -605,18 +608,18 @@ class AnalysisWorker:
             if capture.bookmarked:
                 parts.append("[*]")
 
-            print(" ".join(parts))
+            logger.info(" ".join(parts))
 
         except InferenceCancelled:
             # Chat pre-empted this analysis — re-queue at front, not an error
             elapsed = time.time() - start
             self._priority_items.append(capture)
-            print(f"[AnalysisWorker] Yielded to chat after {elapsed:.1f}s, re-queued at front (priority: {len(self._priority_items)})")
+            logger.info(f"Yielded to chat after {elapsed:.1f}s, re-queued at front (priority: {len(self._priority_items)})")
 
         except Exception as e:
             elapsed = time.time() - start
             self._errors += 1
-            print(f"[AnalysisWorker] Failed after {elapsed:.1f}s: {e}")
+            logger.error(f"Failed after {elapsed:.1f}s: {e}")
 
             self._db.update_activity_analysis(
                 activity_id=activity_id,
@@ -663,7 +666,7 @@ class AnalysisWorker:
             if self._queue.qsize() > 0:
                 return
 
-            print(f"[AnalysisWorker] Backfilling #{activity_id} ({app_name})...")
+            logger.info(f"Backfilling #{activity_id} ({app_name})...")
 
             # Load image and create a minimal CaptureResult
             img = Image.open(ss_path)
@@ -687,15 +690,15 @@ class AnalysisWorker:
                 await self._process(capture)
             finally:
                 self._is_backfill = False
-            print(f"[AnalysisWorker] Backfill #{activity_id} complete")
+            logger.info(f"Backfill #{activity_id} complete")
 
         except Exception as e:
-            print(f"[AnalysisWorker] Backfill error: {e}")
+            logger.error(f"Backfill error: {e}")
 
     def stop(self):
         self._running = False
-        print(
-            f"[AnalysisWorker] Stopped. "
+        logger.info(
+            f"Stopped. "
             f"Processed: {self._processed}, Errors: {self._errors}"
         )
 
@@ -713,7 +716,7 @@ class AnalysisWorker:
             except Exception:
                 break
         if flushed:
-            print(f"[AnalysisWorker] Flushed {flushed} queued items")
+            logger.debug(f"Flushed {flushed} queued items")
 
     @property
     def stats(self) -> dict:

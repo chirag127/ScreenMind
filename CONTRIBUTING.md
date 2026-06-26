@@ -48,6 +48,35 @@ Open an [issue](https://github.com/ayushh0110/ScreenMind/issues) with:
 
 Keep commits focused — one logical change per commit.
 
+## Coding Conventions
+
+### Logging (no bare `print()`)
+
+All output goes through Python's `logging` module — **never use bare `print()`** in source files. CI will reject PRs that add `print()` calls (enforced via `flake8-print`).
+
+```python
+import logging
+
+logger = logging.getLogger("screenmind.<module_path>")
+# e.g. "screenmind.workers.analysis_worker"
+
+logger.info("Normal operation")
+logger.warning("Something unexpected but recoverable")
+logger.error("Something failed")
+logger.debug("Verbose detail for troubleshooting")
+```
+
+**Rules:**
+- Declare `logger` at **module level**, after all imports
+- Use the `screenmind.<dotted.module.path>` naming convention
+- Pick the right level: `info` for milestones, `warning` for degraded state, `error` for failures, `debug` for verbose detail
+- **No emoji in logger messages** — they crash on Windows cp1252 terminals. Emoji in UI strings (overlay notifications, DB text) are fine
+- If you genuinely need a `print(file=sys.stderr)` (e.g. startup banners), add `# noqa: T201`
+
+### Why?
+
+ScreenMind uses MCP stdio transport — any stray `print()` to stdout corrupts the protocol and crashes IDE integrations. All logging goes to `stderr` by default.
+
 ## Where Help is Needed
 
 - **macOS support** — screen capture on macOS needs work

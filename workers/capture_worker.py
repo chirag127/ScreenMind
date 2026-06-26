@@ -6,6 +6,7 @@ Also handles hotkey-triggered instant bookmarked captures.
 """
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -20,6 +21,8 @@ from capture.window import get_active_window_title, get_active_app_name
 from config import settings
 from engine.a11y_extractor import A11yExtractor
 from storage.models import ScreenshotEntry
+
+logger = logging.getLogger("screenmind.workers.capture_worker")
 
 
 @dataclass
@@ -70,12 +73,12 @@ class CaptureWorker:
         Idle detection: if screen unchanged for 3+ checks, extends poll to 30s.
         """
         self._running = True
-        print(
-            f"[CaptureWorker] Ready (paused). Smart capture (5s poll, "
+        logger.info(
+            f"Ready (paused). Smart capture (5s poll, "
             f"{settings.capture_interval}s max), "
             f"Saving to: {settings.screenshots_dir}"
         )
-        print("[CaptureWorker] Press Ctrl+Shift+P or click 'Start Capturing' in the dashboard to begin.")
+        logger.info("Press Ctrl+Shift+P or click 'Start Capturing' in the dashboard to begin.")
 
         while self._running:
             # Handle pending bookmark captures
@@ -139,7 +142,7 @@ class CaptureWorker:
                     if heavy in app_lower:
                         if not getattr(self, '_heavy_app_logged', None) == app_name:
                             self._heavy_app_logged = app_name
-                            print(f"[CaptureWorker] Auto-paused (heavy app: {app_name})")
+                            logger.debug(f"Auto-paused (heavy app: {app_name})")
                         return
                 # Clear the log flag when returning to normal apps
                 if hasattr(self, '_heavy_app_logged'):
@@ -204,8 +207,8 @@ class CaptureWorker:
             self._last_save_time = time.time()
 
             trigger_label = "[snap]" if trigger == "periodic" else "[change]"
-            print(
-                f"[CaptureWorker] {trigger_label} Captured #{self._capture_count} "
+            logger.info(
+                f"{trigger_label} Captured #{self._capture_count} "
                 f"({app_name or 'unknown'}: {_truncate(window_title, 50)}) "
                 f"[skipped: {self._skip_count}]"
             )
@@ -218,7 +221,7 @@ class CaptureWorker:
                 pass
 
         except Exception as e:
-            print(f"[CaptureWorker] Error: {e}")
+            logger.error(f"Error: {e}")
 
     def trigger_bookmark(self):
         """
@@ -227,9 +230,9 @@ class CaptureWorker:
         """
         try:
             self._pending_bookmark = True
-            print("[CaptureWorker] Bookmark capture queued.")
+            logger.info("Bookmark capture queued.")
         except Exception as e:
-            print(f"[CaptureWorker] Bookmark error: {e}")
+            logger.error(f"Bookmark error: {e}")
 
     async def _do_bookmark_capture(self):
         """Perform an immediate bookmarked capture."""
@@ -281,24 +284,24 @@ class CaptureWorker:
 
         await self._queue.put(capture_result)
         self._capture_count += 1
-        print(f"[CaptureWorker] [*] Bookmarked capture #{self._capture_count}")
+        logger.info(f"[*] Bookmarked capture #{self._capture_count}")
 
     def pause(self, source: str = "unknown"):
         """Pause capture (e.g., for privacy)."""
         self._paused = True
         self._dedup.reset()
-        print(f"[CaptureWorker] Paused. (source: {source})")
+        logger.info(f"Paused. (source: {source})")
 
     def resume(self, source: str = "unknown"):
         """Resume capture."""
         self._paused = False
-        print(f"[CaptureWorker] Resumed. (source: {source})")
+        logger.info(f"Resumed. (source: {source})")
 
     def stop(self):
         """Stop the capture worker."""
         self._running = False
-        print(
-            f"[CaptureWorker] Stopped. "
+        logger.info(
+            f"Stopped. "
             f"Total captures: {self._capture_count}, "
             f"Skipped: {self._skip_count}"
         )

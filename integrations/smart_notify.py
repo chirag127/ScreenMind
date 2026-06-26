@@ -6,10 +6,13 @@ Detects usage patterns and shows overlay notifications.
 - Focus streak celebrations
 """
 
+import logging
 import time
 from typing import Optional
 
 from config import settings
+
+logger = logging.getLogger("screenmind.integrations.smart_notify")
 
 # Entertainment app keywords
 ENTERTAINMENT_APPS = {"youtube", "netflix", "twitch", "reddit", "twitter", "instagram", "tiktok", "facebook", "x.com"}
@@ -104,4 +107,4 @@ def _notify(notification_type: str, title: str, message: str, color: str = "#8b5
         from ui.overlay import show_overlay_notification
         show_overlay_notification(title, message, duration=5.0, color=color)
     except Exception as e:
-        print(f"[SmartNotify] {title}: {message} (overlay failed: {e})")
+        logger.error(f"{title}: {message} (overlay failed: {e})")

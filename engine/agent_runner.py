@@ -8,6 +8,7 @@ Supports two types:
 
 import asyncio
 import importlib.util
+import logging
 import os
 import re
 import sys
@@ -20,6 +21,8 @@ from pathlib import Path
 from typing import Optional
 
 from config import settings
+
+logger = logging.getLogger("screenmind.engine.agent_runner")
 
 
 # ── Agent Log ────────────────────────────────────────────────────────
@@ -127,9 +130,9 @@ def _push_to_obsidian(name: str, output: str):
         content += f"---\n\n#screenmind #agent #{name.lower().replace(' ', '-')}\n"
 
         filepath.write_text(content, encoding="utf-8")
-        print(f"[Obsidian] Agent '{name}' output -> {filepath}")
+        logger.info(f"Obsidian: Agent '{name}' output -> {filepath}")
     except Exception as e:
-        print(f"[Obsidian] Agent push failed: {e}")
+        logger.error(f"Obsidian: Agent push failed: {e}")
 
 
 def _push_to_webhook(name: str, output: str):
@@ -160,9 +163,9 @@ def _push_to_webhook(name: str, output: str):
             method="POST"
         )
         urllib.request.urlopen(req, timeout=10)
-        print(f"[Webhook] Agent '{name}' output sent to webhook")
+        logger.info(f"Webhook: Agent '{name}' output sent")
     except Exception as e:
-        print(f"[Webhook] Agent push failed: {e}")
+        logger.error(f"Webhook: Agent push failed: {e}")
 
 
 # ── Agent Discovery ──────────────────────────────────────────────────
@@ -254,7 +257,7 @@ def discover_agents() -> list:
             elif f.suffix == ".py" and not f.name.startswith("_"):
                 agents.append(_parse_py_frontmatter(f))
         except Exception as e:
-            print(f"[AgentRunner] Error parsing {f.name}: {e}")
+            logger.warning(f"Error parsing {f.name}: {e}")
 
     return agents
 
@@ -507,14 +510,14 @@ def run_agent(agent: dict) -> dict:
         status = "needs_approval" if "[NEEDS_APPROVAL]" in output else "ok"
         output_dest = agent.get("output", "local")
         _log_run(name, agent_type, status, output, duration=duration, output_dest=output_dest)
-        print(f"[AgentRunner] {name} ({agent_type}) completed in {duration:.1f}s → {output_dest}")
+        logger.info(f"{name} ({agent_type}) completed in {duration:.1f}s → {output_dest}")
         return {"status": status, "output": output, "duration": duration}
 
     except Exception as e:
         duration = time.time() - start
         error = traceback.format_exc()
         _log_run(name, agent_type, "error", error=str(e), duration=duration)
-        print(f"[AgentRunner] {name} failed: {e}")
+        logger.error(f"{name} failed: {e}")
         return {"status": "error", "output": "", "error": str(e), "duration": duration}
 
 
@@ -539,11 +542,11 @@ class AgentScheduler:
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
-        print("[AgentScheduler] Started")
+        logger.info("AgentScheduler started")
 
     def stop(self):
         self._running = False
-        print("[AgentScheduler] Stopped")
+        logger.info("AgentScheduler stopped")
 
     def _loop(self):
         # Wait for server to be ready
@@ -580,7 +583,7 @@ class AgentScheduler:
                         ).start()
 
             except Exception as e:
-                print(f"[AgentScheduler] Error: {e}")
+                logger.error(f"AgentScheduler error: {e}")
 
             # Check every 60 seconds
             time.sleep(60)

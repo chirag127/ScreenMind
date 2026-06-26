@@ -4,6 +4,7 @@ Starts all services: capture, analysis, API server.
 Includes startup health checks and graceful error handling.
 """
 
+import logging
 import asyncio
 import shutil
 import signal
@@ -22,6 +23,8 @@ from workers.audio_worker import AudioWorker
 from capture.hotkey import HotkeyListener
 from api.server import create_app
 
+logger = logging.getLogger("screenmind.main")
+
 
 def check_llama_server() -> bool:
     """Check if llama-server is reachable and ready for inference."""
@@ -29,14 +32,14 @@ def check_llama_server() -> bool:
 
     status = llm_client.get_server_status()
     if status["status"] == "ok":
-        print(f"[Health] OK - llama-server online at {settings.llama_server_host}")
+        logger.info(f"OK - llama-server online at {settings.llama_server_host}")
         return True
     elif status["status"] == "unreachable":
-        print(f"[Health] FAIL - Cannot reach llama-server at {settings.llama_server_host}")
-        print(f"[Health]   Start it with: llama-server -hf unsloth/gemma-4-E2B-it-GGUF:Q4_K_M --mmproj-auto -ngl 99 --port {settings.llama_server_port}")
+        logger.error(f"FAIL - Cannot reach llama-server at {settings.llama_server_host}")
+        logger.info(f"Start it with: llama-server -hf unsloth/gemma-4-E2B-it-GGUF:Q4_K_M --mmproj-auto -ngl 99 --port {settings.llama_server_port}")
         return False
     else:
-        print(f"[Health] WARN - llama-server issue: {status['detail']}")
+        logger.info(f"WARN - llama-server issue: {status['detail']}")
         return False
 
 
@@ -46,9 +49,9 @@ def check_disk_space():
         usage = shutil.disk_usage(str(settings.data_path))
         free_gb = usage.free / (1024 ** 3)
         if free_gb < 1.0:
-            print(f"[Health] WARN - Low disk space: {free_gb:.1f}GB free. ScreenMind needs space for screenshots.")
+            logger.info(f"WARN - Low disk space: {free_gb:.1f}GB free. ScreenMind needs space for screenshots.")
         else:
-            print(f"[Health] OK - Disk space: {free_gb:.1f}GB free")
+            logger.info(f"OK - Disk space: {free_gb:.1f}GB free")
     except Exception:
         pass
 
@@ -56,45 +59,45 @@ def check_disk_space():
 def print_first_run_help():
     """Show helpful info on first run (no DB yet)."""
     if not settings.db_path.exists():
-        print()
-        print("  +==========================================+")
-        print("  |  Welcome to ScreenMind -- First Run!     |")
-        print("  +==========================================+")
-        print("  |  Screenshots will be saved to:           |")
-        print(f"  |    {str(settings.screenshots_dir)[:38]:<38} |")
-        print("  |                                          |")
-        print("  |  Press Ctrl+Shift+B to bookmark a moment |")
-        print("  |  Open the dashboard to see your timeline |")
-        print("  +==========================================+")
-        print()
+        print(file=sys.stderr)  # noqa: T201
+        print("  +==========================================+", file=sys.stderr)  # noqa: T201
+        print("  |  Welcome to ScreenMind -- First Run!     |", file=sys.stderr)  # noqa: T201
+        print("  +==========================================+", file=sys.stderr)  # noqa: T201
+        print("  |  Screenshots will be saved to:           |", file=sys.stderr)  # noqa: T201
+        print(f"  |    {str(settings.screenshots_dir)[:38]:<38} |", file=sys.stderr)  # noqa: T201
+        print("  |                                          |", file=sys.stderr)  # noqa: T201
+        print("  |  Press Ctrl+Shift+B to bookmark a moment |", file=sys.stderr)  # noqa: T201
+        print("  |  Open the dashboard to see your timeline |", file=sys.stderr)  # noqa: T201
+        print("  +==========================================+", file=sys.stderr)  # noqa: T201
+        print(file=sys.stderr)  # noqa: T201
 
 
 async def main():
     """Initialize and run all ScreenMind services."""
 
-    print("=" * 60)
-    print("  ScreenMind — Privacy-First Screen Activity Journal")
-    print("  Powered by Gemma 4 E2B (100% Local)")
-    print("=" * 60)
-    print()
+    print("=" * 60, file=sys.stderr)  # noqa: T201
+    print("  ScreenMind — Privacy-First Screen Activity Journal", file=sys.stderr)  # noqa: T201
+    print("  Powered by Gemma 4 E2B (100% Local)", file=sys.stderr)  # noqa: T201
+    print("=" * 60, file=sys.stderr)  # noqa: T201
+    print(file=sys.stderr)  # noqa: T201
 
     # ── First-run experience ─────────────────────────────────────────
     settings.ensure_dirs()
     print_first_run_help()
 
-    print(f"[Main] Data directory: {settings.data_path}")
-    print(f"[Main] Capture interval: {settings.capture_interval}s")
-    print(f"[Main] Model: {settings.active_model} ({settings.gemma_mode} mode)")
+    logger.info(f"Data directory: {settings.data_path}")
+    logger.info(f"Capture interval: {settings.capture_interval}s")
+    logger.info(f"Model: {settings.active_model} ({settings.gemma_mode} mode)")
     if settings.blocked_apps_list:
-        print(f"[Main] Privacy zones: {', '.join(settings.blocked_apps_list)}")
+        logger.info(f"Privacy zones: {', '.join(settings.blocked_apps_list)}")
     if settings.gemma_mode == "api":
-        print("")
-        print("=" * 70)
-        print("WARNING: gemma_mode=api — screenshots are sent to Google AI Studio!")
-        print("   This disables the local-only privacy guarantee.")
-        print("   Set GEMMA_MODE=local to keep all data on your machine.")
-        print("=" * 70)
-    print()
+        print("", file=sys.stderr)  # noqa: T201
+        print("=" * 70, file=sys.stderr)  # noqa: T201
+        print("WARNING: gemma_mode=api — screenshots are sent to Google AI Studio!", file=sys.stderr)  # noqa: T201
+        print("   This disables the local-only privacy guarantee.", file=sys.stderr)  # noqa: T201
+        print("   Set GEMMA_MODE=local to keep all data on your machine.", file=sys.stderr)  # noqa: T201
+        print("=" * 70, file=sys.stderr)  # noqa: T201
+    print(file=sys.stderr)  # noqa: T201
 
     # ── llama-server setup ─────────────────────────────────────────────
     # Check if llama-server binary is available; offer to install if missing
@@ -106,7 +109,7 @@ async def main():
     if llama_binary_available:
         # Binary exists — check if server is running, start if not
         if not check_llama_server():
-            print("[Main] llama-server not running — starting automatically...")
+            logger.info("llama-server not running — starting automatically...")
             llm_server_ok = model_manager.start_server(settings.active_model, timeout=120)
         else:
             llm_server_ok = True
@@ -115,26 +118,26 @@ async def main():
 
     check_disk_space()
     if not llm_server_ok:
-        print()
-        print("[Main] WARN - Starting without Gemma 4 -- screenshots will be captured")
-        print("[Main]   but NOT analyzed until llama-server is available.")
-        print("[Main]   The dashboard and API will still work with existing data.")
+        print(file=sys.stderr)  # noqa: T201
+        logger.warning("Starting without Gemma 4 -- screenshots will be captured")
+        logger.warning("but NOT analyzed until llama-server is available.")
+        logger.warning("The dashboard and API will still work with existing data.")
         if not llama_binary_available:
-            print("[Main]   Run 'python setup_llama.py' to install llama-server.")
-        print()
-    print()
+            logger.info("Run 'python setup_llama.py' to install llama-server.")
+        print(file=sys.stderr)  # noqa: T201
+    print(file=sys.stderr)  # noqa: T201
 
     # ── Shared services ──────────────────────────────────────────────
     db = Database()
     # Fix any meetings left 'ongoing' from a previous crash
     stale = db.cleanup_stale_meetings()
     if stale:
-        print(f"[Database] Cleaned up {stale} stale meeting(s) from previous session")
+        logger.info(f"Cleaned up {stale} stale meeting(s) from previous session")
     # Auto-cleanup old data based on retention setting
     if settings.retention_days > 0:
         cleaned = db.cleanup_old_data(settings.retention_days)
         if cleaned["activities"] > 0 or cleaned["meetings"] > 0:
-            print(f"[Database] Retention cleanup: removed {cleaned['activities']} activities, "
+            logger.info(f"Retention cleanup: removed {cleaned['activities']} activities, "
                   f"{cleaned['meetings']} meetings older than {settings.retention_days} days")
     embedder = Embedder()
 
@@ -167,11 +170,11 @@ async def main():
     def _toggle_pause():
         if capture_worker.is_paused:
             capture_worker.resume(source="hotkey")
-            print("[Hotkey] >> Capture resumed")
+            logger.info(">> Capture resumed")
             show_overlay_notification("▶ Capturing Resumed", "Screen recording is active", duration=2.5, color="#8b5cf6")
         else:
             capture_worker.pause(source="hotkey")
-            print("[Hotkey] || Capture paused")
+            logger.info("|| Capture paused")
             show_overlay_notification("⏸ Capturing Paused", "Screen recording is paused", duration=2.5, color="#f59e0b")
 
     def _on_voice_start():
@@ -195,7 +198,7 @@ async def main():
                 transcript = llm_client.transcribe_audio(wav_bytes)
                 # Guard: don't write to DB if shutdown is in progress
                 if _shutdown.is_set():
-                    print("[VoiceMemo] Shutdown in progress — discarding memo")
+                    logger.info("Shutdown in progress — discarding memo")
                     return
                 # Save to database as a voice memo activity
                 from storage.models import ScreenshotEntry
@@ -220,10 +223,10 @@ async def main():
                     confidence=0.9,
                 )
                 db.update_activity_analysis(activity_id, analysis)
-                print(f"[VoiceMemo] Saved: {transcript[:60]}...")
+                logger.info(f"Saved: {transcript[:60]}...")
                 show_overlay_notification("✅ Memo Saved", transcript[:50] if transcript else "Saved", duration=2.0, color="#10b981")
             except Exception as e:
-                print(f"[VoiceMemo] Transcription failed: {e}")
+                logger.error(f"Transcription failed: {e}")
                 show_overlay_notification("❌ Failed", str(e)[:50], duration=2.0, color="#ef4444")
 
         threading.Thread(target=_transcribe, daemon=True).start()
@@ -248,7 +251,7 @@ async def main():
     shutdown_event = asyncio.Event()
 
     def handle_signal(*_):
-        print("\n[Main] Shutdown signal received...")
+        print("\n[Main] Shutdown signal received...", file=sys.stderr)  # noqa: T201
         _shutdown.set()  # Signal voice transcription thread
         shutdown_event.set()
 
@@ -259,16 +262,16 @@ async def main():
     # ── Safety check: warn/block 0.0.0.0 binding without PIN ──────────
     if settings.api_host in ("0.0.0.0", "::"):
         if not settings.dashboard_pin_hash:
-            print("")
-            print("=" * 70)
-            print("WARNING: Binding to 0.0.0.0 exposes ALL screen data to your network!")
-            print("   Set a PIN (dashboard_pin_hash) before exposing to the network.")
-            print("   Falling back to 127.0.0.1 for safety.")
-            print("=" * 70)
-            print("")
+            print("", file=sys.stderr)  # noqa: T201
+            print("=" * 70, file=sys.stderr)  # noqa: T201
+            print("WARNING: Binding to 0.0.0.0 exposes ALL screen data to your network!", file=sys.stderr)  # noqa: T201
+            print("   Set a PIN (dashboard_pin_hash) before exposing to the network.", file=sys.stderr)  # noqa: T201
+            print("   Falling back to 127.0.0.1 for safety.", file=sys.stderr)  # noqa: T201
+            print("=" * 70, file=sys.stderr)  # noqa: T201
+            print("", file=sys.stderr)  # noqa: T201
             settings.api_host = "127.0.0.1"
         else:
-            print("[Main] WARNING: Server exposed to network (0.0.0.0). PIN auth is enabled.")
+            logger.warning("WARNING: Server exposed to network (0.0.0.0). PIN auth is enabled.")
 
     # ── Start API server in background thread ────────────────────────
     server_config = uvicorn.Config(
@@ -295,7 +298,6 @@ async def main():
         from engine.agent_runner import AgentScheduler, get_agents_dir
         import shutil as _shutil
         from pathlib import Path as _Path
-
         # Copy default agents on first run
         agents_dir = get_agents_dir()
         defaults_dir = _Path(__file__).parent / "default_agents"
@@ -304,27 +306,27 @@ async def main():
                 dest = agents_dir / f.name
                 if not dest.exists():
                     _shutil.copy2(f, dest)
-                    print(f"[Agents] Installed default agent: {f.name}")
+                    logger.info(f"Installed default agent: {f.name}")
 
         if settings.agents_enabled:
             agent_scheduler = AgentScheduler()
             agent_scheduler.start()
-            print(f"[Agents] Scheduler started — scanning {agents_dir}")
+            logger.info(f"Scheduler started — scanning {agents_dir}")
     except Exception as e:
-        print(f"[Agents] Could not start scheduler: {e}")
+        logger.info(f"Could not start scheduler: {e}")
 
-    print(f"[Main] Dashboard: http://{settings.api_host}:{settings.api_port}")
-    print(f"[Main] API docs:  http://{settings.api_host}:{settings.api_port}/docs")
-    print(f"[Main] Bookmark:  {settings.bookmark_hotkey}")
-    print()
-    print("[Main] ScreenMind is running! Press Ctrl+C to stop.")
-    print()
+    logger.info(f"Dashboard: http://{settings.api_host}:{settings.api_port}")
+    logger.info(f"API docs:  http://{settings.api_host}:{settings.api_port}/docs")
+    logger.info(f"Bookmark:  {settings.bookmark_hotkey}")
+    print(file=sys.stderr)  # noqa: T201
+    logger.info("ScreenMind is running! Press Ctrl+C to stop.")
+    print(file=sys.stderr)  # noqa: T201
 
     # ── Wait for shutdown ────────────────────────────────────────────
     await shutdown_event.wait()
 
     # ── Cleanup ──────────────────────────────────────────────────────
-    print("[Main] Shutting down...")
+    logger.info("Shutting down...")
     capture_worker.stop()
     analysis_worker.stop()
     audio_worker.force_stop()
@@ -343,7 +345,7 @@ async def main():
 
     db.close()
     model_manager.stop_server()
-    print("[Main] Goodbye!")
+    logger.info("Goodbye!")
 
 
 if __name__ == "__main__":

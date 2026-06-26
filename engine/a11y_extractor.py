@@ -9,9 +9,12 @@ This module now delegates to the platform_support adapter for cross-platform
 compatibility. The API (A11yExtractor class) remains identical.
 """
 
+import logging
 from typing import Optional, Tuple
 
 from platform_support import adapter as get_adapter
+
+logger = logging.getLogger("screenmind.engine.a11y_extractor")
 
 
 class A11yExtractor:
@@ -47,7 +50,7 @@ class A11yExtractor:
         try:
             return self._adapter.extract_a11y_text(hwnd)
         except Exception as e:
-            print(f"[A11y] Extraction failed: {e}")
+            logger.debug(f"Extraction failed: {e}")
             return None, "none"
 
     @property
