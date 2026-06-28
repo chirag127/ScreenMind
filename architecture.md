@@ -94,9 +94,9 @@ Four AI models working in concert:
 | Property | Detail |
 |---|---|
 | **Method** | `mss` — fastest cross-platform screen capture |
-| **Smart Polling** | 5s check interval, 10s minimum between saves, 30s max forced capture |
+| **Smart Polling** | 5s check interval, 10s minimum between saves, 40s max forced capture |
 | **Deduplication** | Perceptual hash (pHash), threshold: 8 hamming distance |
-| **Idle Detection** | 3+ consecutive skips → extends poll to 30s (screen unchanged) |
+| **Idle Detection** | 3+ consecutive skips → extends poll to 40s (screen unchanged) |
 | **A11y Extraction** | Windows UI Automation text captured at screenshot time (correct window) |
 | **Privacy Zones** | Blocked apps silently skipped. Heavy apps auto-pause capture. |
 | **Output** | JPEG @ 70% quality → `~/.screenmind/screenshots/{date}/{time}.jpg` |
@@ -104,10 +104,11 @@ Four AI models working in concert:
 
 ```
 Capture Loop:
-┌─────────┐    ┌──────────┐    ┌──────────┐    ┌──────────────┐
-│ mss grab │──▶│ pHash    │──▶│ A11y text│──▶│ Queue + DB   │
-│ (5s poll)│   │ dedup    │   │ extract  │   │ insert       │
-└─────────┘    └──────────┘   └──────────┘   └──────────────┘
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────────┐
+│ mss grab  │──▶│ pHash    │──▶│ A11y text│──▶│ Queue + DB   │
+│ (5s poll) │   │ dedup    │   │ extract  │   │ insert       │
+│ (40s max) │   │          │   │          │   │              │
+└──────────┘    └──────────┘   └──────────┘   └──────────────┘
                     │ duplicate?
                     └──▶ skip + delete file
 ```
@@ -339,8 +340,9 @@ meetings (
 )
 
 daily_summaries (
-    id, date (UNIQUE), summary, total_activities,
-    category_breakdown (JSON), top_repos (JSON), productive_hours
+    id, date (UNIQUE), summary, standup, total_activities,
+    category_breakdown (JSON), top_repos (JSON), productive_hours,
+    created_at
 )
 
 -- FTS5 virtual table for keyword search
@@ -348,7 +350,8 @@ activities_fts (summary, details, ocr_text, app_name, scene_description, organiz
 
 -- Indexes
 idx_activities_timestamp, idx_activities_category, idx_activities_app,
-idx_activities_bookmarked, idx_activities_analyzed
+idx_activities_bookmarked, idx_activities_analyzed,
+idx_dev_repo, idx_dev_branch, idx_dev_activity
 ```
 
 ### Embedding Storage
@@ -484,7 +487,7 @@ Capabilities per platform:
 | Cache hit (identical) | ~0ms | Copy from memory |
 | Cache hit (minor) | ~3-10s | OCR only, skip Gemma |
 | Chat response | ~5-15s | Text mode. Vision mode: ~15-30s |
-| Disk per day | ~80-150MB | Screenshots + DB (8hr active use, 30s interval) |
+| Disk per day | ~80-150MB | Screenshots + DB (8hr active use, 40s interval) |
 | RAM usage | ~1.5-2GB | Python + EasyOCR + MiniLM (Gemma in llama-server) |
 | VRAM usage | ~3-4GB | Gemma 4 E2B Q4_K_M via llama-server |
 
@@ -549,7 +552,7 @@ Capabilities per platform:
 | Must understand **screenshots natively** | Rules out text-only models |
 | Must stay **100% local** for privacy | Rules out cloud APIs (Gemini, GPT-4V) |
 | Must handle **audio natively** | Rules out models without audio encoder |
-| Must be **fast enough** for 30s cycle | E2B: 12s (fast) to 76s (accurate) |
+| Must be **fast enough** for 40s cycle | E2B: 12s (fast) to 76s (accurate) |
 
 Gemma 4 E2B is the only model that satisfies all five constraints simultaneously. The model doesn't just power the app — it's what makes this product architecturally possible.
 

@@ -21,7 +21,7 @@
 
 <br>
 
-[**Features**](#-features) · [**Gemma 4 Deep Dive**](#-how-gemma-4-is-used) · [**Quick Start**](#-quick-start) · [**Architecture**](#-architecture) · [**Agent Platform**](#-agent-platform) · [**MCP**](#-mcp-server-claude--cursor--vs-code) · [**API**](#-api-reference)
+[**Features**](#-features) · [**Comparison**](#-how-screenmind-compares) · [**Gemma 4 Deep Dive**](#-how-gemma-4-is-used) · [**Quick Start**](#-quick-start) · [**Architecture**](#-architecture) · [**Agent Platform**](#-agent-platform) · [**MCP**](#-mcp-server-claude--cursor--vs-code) · [**API**](#-api-reference)
 
 <br>
 
@@ -103,6 +103,30 @@
 | `Ctrl+Shift+V` | 🎤 Hold to record voice memo |
 
 > All hotkeys customizable from Settings.
+
+---
+
+## 📊 How ScreenMind Compares
+
+| Feature | **ScreenMind** | **Screenpipe** | **Microsoft Recall** |
+|---|---|---|---|
+| **License** | ✅ MIT (fully open-source) | Source-available (commercial license required for business use) | Proprietary |
+| **Cost** | ✅ Free forever | Free (personal) / Paid (commercial) | Requires $1000+ Copilot+ PC |
+| **Privacy** | ✅ Zero network calls. Zero telemetry. Ever. | Local-first, optional cloud | Telemetry opt-in. Data stayed local after backlash. |
+| **Min. hardware** | ✅ Any GPU ≥4GB VRAM (or CPU-only) | 8GB RAM, modern CPU | 40 TOPS NPU + 16GB RAM + BitLocker + Windows Hello |
+| **AI architecture** | ✅ Single model — Gemma 4 does vision + audio + reasoning | Multiple models — OCR + Whisper + external LLM | Proprietary NPU model |
+| **Audio/meetings** | ✅ Native — Gemma 4 audio encoder (no Whisper needed) | Whisper-based transcription | ❌ Not supported |
+| **Smart capture** | ✅ pHash deduplication + idle detection + auto-pause for games | Event-driven (app switches, clicks) | Periodic snapshots |
+| **Search** | ✅ Semantic (MiniLM embeddings) + FTS5 keyword — hybrid fusion | Semantic + keyword + a11y tree | Semantic only (NPU) |
+| **Chat with memory** | ✅ Full conversational RAG with follow-ups and vision fallback | ❌ | ❌ |
+| **Agent system** | ✅ No-code Markdown agents + Python SDK + MCP server | Pipes (TypeScript) + MCP | ❌ |
+| **In-app Model Hub** | ✅ Download, switch, manage models from UI — no terminal | ❌ | ❌ |
+| **Encryption** | ✅ AES (Fernet) + OS keyring | Optional | TPM + BitLocker |
+| **PII auto-redaction** | ✅ Transparent regex — CC (Luhn-validated), SSN, API keys, passwords | AI-based PII model | Content filtering |
+| **Integrations** | ✅ Obsidian · Notion · Webhooks · MCP | MCP, SDK (Tauri/Electron/Swift) | Windows ecosystem only |
+| **Platform** | ✅ Windows · macOS · Linux (X11 + Wayland) | Windows · macOS · Linux | Windows 11 only (Copilot+ PCs) |
+
+> **TL;DR:** ScreenMind is the only option that's fully MIT open-source, runs on any hardware (including a $150 GPU), handles vision + audio + reasoning with a single local model, and lets you actually *chat* with your screen memory.
 
 ---
 
@@ -217,6 +241,8 @@ Or configure everything from the **Settings** tab in the dashboard.
 ---
 
 ## 🏗️ Architecture
+
+> For a full deep-dive into threading, caching, search internals, and the privacy pipeline, see [**ARCHITECTURE.md**](ARCHITECTURE.md).
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
