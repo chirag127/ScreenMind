@@ -42,7 +42,7 @@ class ScreenCapture:
                 logger.warning("Capture will be unavailable.")
                 # self._backend stays None — capture() returns None gracefully
         else:
-            self._sct = mss.MSS()
+            self._sct = mss.MSS() if hasattr(mss, "MSS") else mss.mss()
 
     def _get_active_monitor(self) -> dict:
         """Return mss monitor dict for the monitor containing the active window.
