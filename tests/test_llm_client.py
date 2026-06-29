@@ -168,7 +168,7 @@ class TestTranscribeAudio:
         assert audio_part[0]["input_audio"]["format"] == "wav"
 
     @patch("engine.model_manager.is_audio_capable", return_value=False)
-    @patch("engine.model_manager.get_active_model", return_value="gemma-3-12b")
+    @patch("engine.model_manager.get_active_model", return_value="non-audio-model")
     def test_raises_on_non_audio_model(self, _get, _cap):
         """transcribe_audio raises ValueError when model doesn't support audio."""
         with pytest.raises(ValueError, match="does not support audio"):

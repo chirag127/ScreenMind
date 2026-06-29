@@ -471,6 +471,7 @@ def get_status() -> str:
         "capture_interval": settings.capture_interval,
         "performance_mode": settings.performance_mode,
         "analysis_mode": settings.analysis_mode,
+        "capture_active_monitor": settings.capture_active_monitor,
         "data_path": str(settings.data_path),
     }, indent=2)
 

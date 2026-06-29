@@ -48,6 +48,9 @@ async function renderSettings(el) {
   + '<div class="settings-card"><div class="settings-card-header"><div><div class="settings-title">Deferred Analysis</div><div class="settings-desc">Queue screenshots and analyze only when system is idle</div></div>'
   + _sw('defer-toggle', cfg.defer_analysis) + '</div></div>'
 
+  + '<div class="settings-card"><div class="settings-card-header"><div><div class="settings-title">Capture Active Monitor <span style="background:var(--accent-primary);color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:6px;vertical-align:middle">Beta</span></div><div class="settings-desc">Captures the screen with your active window instead of primary monitor. Recommended for multi-monitor setups. Works on Windows, Linux X11, and macOS.</div></div>'
+  + _sw('capture-active-monitor', cfg.capture_active_monitor) + '</div></div>'
+
   // ── AI & MODELS ──
   + _sec('&#129504;', 'AI &amp; Models')
   + '<div class="settings-card settings-card-accent" id="model-card"><div class="settings-card-header"><div><div class="settings-title">AI Model</div><div class="settings-desc">Select which Gemma model for analysis and chat</div></div></div>'
@@ -406,6 +409,7 @@ window.saveSettings = async function() {
     heavy_apps: document.getElementById('heavy-apps-input').value,
     defer_analysis: document.getElementById('defer-toggle').checked,
     capture_interval: parseInt(document.getElementById('interval-slider').value),
+    capture_active_monitor: document.getElementById('capture-active-monitor').checked,
     meeting_transcription: document.getElementById('meeting-toggle').checked,
     meeting_apps: document.getElementById('meeting-apps-input').value,
     retention_days: retention ? parseInt(retention.value) : 7,

@@ -26,17 +26,27 @@ class ScreenDeduplicator:
         self._threshold = threshold
         self._last_hash: Optional[imagehash.ImageHash] = None
         self._current_hash: Optional[imagehash.ImageHash] = None
+        self._last_monitor_key: Optional[str] = None
 
-    def is_duplicate(self, image: Image.Image) -> bool:
+    def is_duplicate(self, image: Image.Image, monitor_key: Optional[str] = None) -> bool:
         """
         Check if the given image is too similar to the previous one.
 
         Args:
             image: PIL Image of the current screenshot.
+            monitor_key: Optional identifier for the captured monitor (e.g.
+                         "0,0" for primary). When this changes between calls,
+                         the stored hash is reset so a monitor switch does not
+                         cause a false "new content" capture.
 
         Returns:
             True if the image should be skipped (duplicate), False if it's new.
         """
+        # Reset hash when monitor changes to avoid false positives
+        if monitor_key is not None and monitor_key != self._last_monitor_key:
+            self._last_hash = None
+            self._last_monitor_key = monitor_key
+
         self._current_hash = imagehash.phash(image)
 
         if self._last_hash is None:
@@ -64,3 +74,4 @@ class ScreenDeduplicator:
         """Clear the stored hash (e.g., after pause/resume)."""
         self._last_hash = None
         self._current_hash = None
+        self._last_monitor_key = None

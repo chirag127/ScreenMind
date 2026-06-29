@@ -50,6 +50,7 @@ async def get_settings():
         "bookmark_hotkey": settings.bookmark_hotkey,
         "pause_hotkey": settings.pause_hotkey,
         "voice_hotkey": settings.voice_hotkey,
+        "capture_active_monitor": settings.capture_active_monitor,
     }
 
 
@@ -99,6 +100,7 @@ async def update_settings(request: Request):
         "bookmark_hotkey": settings.bookmark_hotkey,
         "pause_hotkey": settings.pause_hotkey,
         "voice_hotkey": settings.voice_hotkey,
+        "capture_active_monitor": settings.capture_active_monitor,
     }
 
 

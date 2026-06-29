@@ -158,7 +158,8 @@ class CaptureWorker:
             filepath, image = result
 
             # Check for duplicate (content-change detection)
-            if self._dedup.is_duplicate(image):
+            monitor_key = self._screen.last_monitor_key
+            if self._dedup.is_duplicate(image, monitor_key=monitor_key):
                 self._skip_count += 1
                 self._consecutive_skips += 1
                 try:

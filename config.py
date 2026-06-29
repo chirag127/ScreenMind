@@ -79,6 +79,7 @@ _ALLOWED_OVERRIDES = {
     "dashboard_pin_hash", "dashboard_lock_timeout",
     "encryption_enabled",
     "bookmark_hotkey", "pause_hotkey", "voice_hotkey",
+    "capture_active_monitor",
     "setup_complete",
 }
 
@@ -104,6 +105,10 @@ class Settings(BaseSettings):
     data_dir: str = Field(
         default="~/.screenmind",
         description="Root directory for all ScreenMind data",
+    )
+    capture_active_monitor: bool = Field(
+        default=False,
+        description="(Beta) Capture the monitor with the active window instead of primary",
     )
 
     # ── Model ────────────────────────────────────────────────────────────

@@ -27,17 +27,9 @@ class TestAudioCapability:
         """Gemma 4 E4B supports audio."""
         assert model_manager.is_audio_capable("gemma-4-e4b") is True
 
-    def test_not_audio_capable_gemma3_4b(self):
-        """Gemma 3 4B does NOT support audio."""
-        assert model_manager.is_audio_capable("gemma-3-4b") is False
-
-    def test_not_audio_capable_gemma3_12b(self):
-        """Gemma 3 12B does NOT support audio."""
-        assert model_manager.is_audio_capable("gemma-3-12b") is False
-
-    def test_not_audio_capable_gemma3_27b(self):
-        """Gemma 3 27B does NOT support audio."""
-        assert model_manager.is_audio_capable("gemma-3-27b") is False
+    def test_audio_capable_gemma4_12b(self):
+        """Gemma 4 12B supports audio."""
+        assert model_manager.is_audio_capable("gemma-4-12b") is True
 
     def test_unknown_model_not_audio(self):
         """Unknown model key returns False."""
@@ -56,11 +48,11 @@ class TestAudioCapability:
             assert caps["audio"] is True
             assert caps["vision"] is True
 
-    def test_capabilities_for_gemma3(self):
-        """Gemma 3 4B has vision but no audio."""
-        with patch.object(model_manager, "_active_model_key", "gemma-3-4b"):
+    def test_capabilities_for_gemma4_12b(self):
+        """Gemma 4 12B has both audio and vision."""
+        with patch.object(model_manager, "_active_model_key", "gemma-4-12b"):
             caps = model_manager.get_active_capabilities()
-            assert caps["audio"] is False
+            assert caps["audio"] is True
             assert caps["vision"] is True
 
 
@@ -74,7 +66,7 @@ class TestSwitchModelGuards:
     @patch.object(model_manager, "is_model_downloaded", return_value=False)
     def test_switch_not_downloaded_returns_false(self, _mock):
         """Switching to a not-downloaded model returns False."""
-        assert model_manager.switch_model("gemma-3-4b") is False
+        assert model_manager.switch_model("nonexistent") is False
 
     @patch.object(model_manager, "is_model_downloaded", return_value=True)
     def test_switch_blocked_by_lock(self, _mock):
@@ -172,13 +164,13 @@ class TestGetModelStatus:
         assert "vision" in status["capabilities"]
 
     @patch.object(model_manager, "is_server_running", return_value=True)
-    @patch.object(model_manager, "_active_model_key", "gemma-3-12b")
+    @patch.object(model_manager, "_active_model_key", "nonexistent-model")
     def test_status_capabilities_reflect_model(self, _):
         """Capabilities reflect the active model's actual support."""
         model_manager._set_download_state(active=False, status="idle")
         status = model_manager.get_model_status()
         assert status["capabilities"]["audio"] is False
-        assert status["capabilities"]["vision"] is True
+        assert status["capabilities"]["vision"] is False
 
 
 class TestCleanupIncompleteCache:
