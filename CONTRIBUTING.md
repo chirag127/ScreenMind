@@ -20,7 +20,7 @@ Contributions are welcome — bug fixes, features, docs, tests, all of it.
 
 3. Set up a Gemma model (needed for the analysis engine):
    ```bash
-   python setup_llama.py
+   python -m screenmind.setup_llama
    ```
    Or use the Model Hub in the web dashboard to download a model.
 
@@ -90,17 +90,17 @@ ScreenMind uses MCP stdio transport — any stray `print()` to stdout corrupts t
 
 ```
 ScreenMind/
-├── api/              # Web dashboard + REST API (Flask)
-├── capture/          # Screen capture (Windows, X11, Wayland)
-├── engine/           # Analysis, LLM client, embeddings, agents
-├── storage/          # SQLite database layer
-├── workers/          # Background workers (audio transcription)
-├── integrations/     # Notion, webhooks, etc.
-├── platform_support/ # OS-specific window detection
+│   ├── api/              # Web dashboard + REST API (Flask)
+│   ├── capture/          # Screen capture (Windows, X11, Wayland)
+│   ├── engine/           # Analysis, LLM client, embeddings, agents
+│   ├── storage/          # SQLite database layer
+│   ├── workers/          # Background workers (audio transcription)
+│   ├── integrations/     # Notion, webhooks, etc.
+│   ├── platform_support/ # OS-specific window detection
 ├── tests/            # Test suite (pytest)
-├── main.py           # Entry point — starts capture + API server
-├── mcp_server.py     # MCP server for IDE integration
-└── config.py         # All configuration and model settings
+├── screenmind/           # Entry point — starts capture + API server
+│   ├── main.py     # MCP server for IDE integration
+│   ├── config.py         # All configuration and model settings
 ```
 
 ## Code of Conduct

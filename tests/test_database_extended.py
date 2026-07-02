@@ -1,7 +1,7 @@
 """Extended database tests — covers methods missed by the original test_database.py."""
 from datetime import datetime
 
-from storage.models import ScreenshotEntry, ActivityRecord, DailySummary, DevContext
+from screenmind.storage.models import ScreenshotEntry, ActivityRecord, DailySummary, DevContext
 
 
 def test_get_unanalyzed_activities(db):

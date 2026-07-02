@@ -30,7 +30,6 @@ pystray==0.19.5
 aiofiles==24.1.0
 
 # Audio / Meeting Transcription
-faster-whisper==1.2.1
 sounddevice==0.5.5
 
 # MCP (Model Context Protocol) — exposes screen history to Claude Desktop, Cursor, VS Code

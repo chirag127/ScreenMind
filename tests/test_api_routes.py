@@ -3,8 +3,8 @@
 import pytest
 from datetime import datetime
 
-from storage.models import ScreenshotEntry, ActivityRecord
-import api.dependencies as deps
+from screenmind.storage.models import ScreenshotEntry, ActivityRecord
+import screenmind.api.dependencies as deps
 
 
 @pytest.mark.asyncio

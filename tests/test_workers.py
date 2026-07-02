@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch, AsyncMock
 
-from workers.capture_worker import CaptureWorker, CaptureResult
+from screenmind.workers.capture_worker import CaptureWorker, CaptureResult
 
 
 class TestCaptureWorker:
@@ -91,7 +91,7 @@ class TestAnalysisWorkerStats:
 
     def test_flush_queue(self):
         """flush_queue drains all items."""
-        from workers.analysis_worker import AnalysisWorker
+        from screenmind.workers.analysis_worker import AnalysisWorker
 
         queue = asyncio.Queue(maxsize=100)
         db = MagicMock()
@@ -106,7 +106,7 @@ class TestAnalysisWorkerStats:
         assert queue.qsize() == 0
 
     def test_stats_keys(self):
-        from workers.analysis_worker import AnalysisWorker
+        from screenmind.workers.analysis_worker import AnalysisWorker
 
         queue = asyncio.Queue(maxsize=100)
         db = MagicMock()
@@ -121,7 +121,7 @@ class TestAnalysisWorkerStats:
         assert "cache_size" in stats
 
     def test_initial_state(self):
-        from workers.analysis_worker import AnalysisWorker
+        from screenmind.workers.analysis_worker import AnalysisWorker
 
         queue = asyncio.Queue(maxsize=100)
         db = MagicMock()
@@ -134,7 +134,7 @@ class TestAnalysisWorkerStats:
         assert len(worker._priority_items) == 0
 
     def test_stop(self):
-        from workers.analysis_worker import AnalysisWorker
+        from screenmind.workers.analysis_worker import AnalysisWorker
 
         queue = asyncio.Queue(maxsize=100)
         db = MagicMock()
@@ -148,28 +148,28 @@ class TestURLExtraction:
     """Tests for URL extraction in analysis worker."""
 
     def test_extract_url_basic(self):
-        from workers.analysis_worker import _extract_url
+        from screenmind.workers.analysis_worker import _extract_url
         assert _extract_url("Visit https://github.com/user/repo today") == "https://github.com/user/repo"
 
     def test_extract_url_none_for_empty(self):
-        from workers.analysis_worker import _extract_url
+        from screenmind.workers.analysis_worker import _extract_url
         assert _extract_url("") is None
         assert _extract_url("no urls here") is None
 
     def test_extract_url_filters_noise(self):
-        from workers.analysis_worker import _extract_url
+        from screenmind.workers.analysis_worker import _extract_url
         # localhost and CDN URLs should be filtered
         assert _extract_url("http://localhost:3000/api") is None
         assert _extract_url("https://cdn.example.com/file.js") is None
 
     def test_extract_all_urls(self):
-        from workers.analysis_worker import _extract_all_urls
+        from screenmind.workers.analysis_worker import _extract_all_urls
         text = "Check https://github.com and https://dev.to for updates"
         urls = _extract_all_urls(text)
         assert len(urls) == 2
         assert "https://github.com" in urls[0]
 
     def test_extract_url_strips_punctuation(self):
-        from workers.analysis_worker import _extract_all_urls
+        from screenmind.workers.analysis_worker import _extract_all_urls
         urls = _extract_all_urls("See https://example.com/page.")
         assert urls[0] == "https://example.com/page"

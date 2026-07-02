@@ -1,6 +1,6 @@
 """Tests for engine/layout_analyzer.py — pure geometry logic, no GPU/LLM needed."""
 import pytest
-from engine.layout_analyzer import (
+from screenmind.engine.layout_analyzer import (
     _parse_layout_json,
     _validate_regions,
     _fallback_regions,

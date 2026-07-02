@@ -1,0 +1,112 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "screenmind"
+version = "0.1.0"
+description = "Privacy-first AI screen activity journal — captures, analyzes, and searches your screen history using Gemma 4, 100% locally."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Ayush Shekhar"},
+]
+keywords = ["screen-capture", "ai", "privacy", "gemma", "local-ai", "activity-tracker", "llm", "vision"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Desktop Environment",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Multimedia :: Graphics :: Capture :: Screen Capture",
+]
+
+dependencies = [
+    # Core
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "pydantic>=2.11.0,<3.0.0",
+    "pydantic-settings==2.7.1",
+    "python-dotenv==1.0.1",
+
+    # Screen Capture
+    "mss==9.0.2",
+    "Pillow==11.1.0",
+    "imagehash==4.3.1",
+
+    # Hotkey
+    "keyboard==0.13.5",
+
+    # AI / ML
+    "httpx==0.28.1",
+    "sentence-transformers==3.3.1",
+    "numpy==2.2.2",
+    "easyocr==1.7.2",
+
+    # Git Integration
+    "gitpython==3.1.44",
+
+    # System Tray
+    "pystray==0.19.5",
+
+    # Utilities
+    "aiofiles==24.1.0",
+
+    # Audio / Meeting Transcription
+    "sounddevice==0.5.5",
+
+    # Encryption (optional but included by default)
+    "cryptography==46.0.7",
+    "keyring>=25.0",
+]
+
+[project.optional-dependencies]
+# MCP server for Claude Desktop / Cursor / VS Code
+mcp = ["mcp[cli]==1.26.0"]
+
+# Windows-only accessibility API
+windows = ["uiautomation==2.0.18"]
+
+# Development / Testing
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio",
+    "pytest-cov",
+]
+
+[project.scripts]
+screenmind = "screenmind.main:run"
+
+[project.urls]
+Homepage = "https://github.com/ayushh0110/ScreenMind"
+Repository = "https://github.com/ayushh0110/ScreenMind"
+Issues = "https://github.com/ayushh0110/ScreenMind/issues"
+
+[tool.setuptools.packages.find]
+include = ["screenmind", "screenmind.*"]
+exclude = ["tests", "tests.*"]
+
+[tool.setuptools.package-data]
+screenmind = [
+    "api/static/**/*",
+    "api/static/css/*",
+    "api/static/js/*",
+    "api/static/index.html",
+    "default_agents/*.md",
+]
+
+
+
+# ── Pytest ────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

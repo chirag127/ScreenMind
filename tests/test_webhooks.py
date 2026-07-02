@@ -3,7 +3,7 @@ import json
 import hashlib
 import hmac
 from unittest.mock import patch, MagicMock
-from integrations.webhooks import (
+from screenmind.integrations.webhooks import (
     fire,
     _parse_headers,
     _send,
@@ -45,14 +45,14 @@ class TestFire:
         assert fire("bookmark", {}, "http://example.com", enabled_events="daily_summary") is False
 
     def test_event_in_allowed_queues(self):
-        with patch("integrations.webhooks.threading.Thread") as mock_thread:
+        with patch("screenmind.integrations.webhooks.threading.Thread") as mock_thread:
             mock_thread.return_value.start = MagicMock()
             result = fire("bookmark", {"id": 1}, "http://example.com", enabled_events="bookmark,daily_summary")
             assert result is True
             mock_thread.return_value.start.assert_called_once()
 
     def test_multiple_urls_spawn_multiple_threads(self):
-        with patch("integrations.webhooks.threading.Thread") as mock_thread:
+        with patch("screenmind.integrations.webhooks.threading.Thread") as mock_thread:
             mock_thread.return_value.start = MagicMock()
             fire("test", {}, "http://a.com, http://b.com")
             assert mock_thread.call_count == 2
@@ -61,7 +61,7 @@ class TestFire:
 # ── _send ───────────────────────────────────────────────────────────────
 
 class TestSend:
-    @patch("integrations.webhooks.urllib.request.urlopen")
+    @patch("screenmind.integrations.webhooks.urllib.request.urlopen")
     def test_success(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.status = 200
@@ -73,7 +73,7 @@ class TestSend:
         result = _send("http://example.com", payload, "", {}, "test")
         assert result is True
 
-    @patch("integrations.webhooks.urllib.request.urlopen")
+    @patch("screenmind.integrations.webhooks.urllib.request.urlopen")
     def test_hmac_signing(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.status = 200
@@ -90,7 +90,7 @@ class TestSend:
         req = call_args[0][0]
         assert "X-Screenmind-Signature" in req.headers or "X-screenmind-signature" in req.headers
 
-    @patch("integrations.webhooks.urllib.request.urlopen")
+    @patch("screenmind.integrations.webhooks.urllib.request.urlopen")
     def test_http_error(self, mock_urlopen):
         import urllib.error
         mock_urlopen.side_effect = urllib.error.HTTPError(
@@ -99,7 +99,7 @@ class TestSend:
         result = _send("http://example.com", {}, "", {}, "test")
         assert result is False
 
-    @patch("integrations.webhooks.urllib.request.urlopen")
+    @patch("screenmind.integrations.webhooks.urllib.request.urlopen")
     def test_url_error(self, mock_urlopen):
         import urllib.error
         mock_urlopen.side_effect = urllib.error.URLError("Connection refused")
@@ -114,7 +114,7 @@ class TestWebhookPing:
         result = webhook_ping("")
         assert result["ok"] is False
 
-    @patch("integrations.webhooks.urllib.request.urlopen")
+    @patch("screenmind.integrations.webhooks.urllib.request.urlopen")
     def test_success(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.status = 200
@@ -126,7 +126,7 @@ class TestWebhookPing:
         assert result["ok"] is True
         assert result["status"] == 200
 
-    @patch("integrations.webhooks.urllib.request.urlopen")
+    @patch("screenmind.integrations.webhooks.urllib.request.urlopen")
     def test_failure(self, mock_urlopen):
         mock_urlopen.side_effect = Exception("Connection refused")
         result = webhook_ping("http://example.com")
@@ -140,7 +140,7 @@ def test_delivery_log_records():
     with _log_lock:
         _delivery_log.clear()
 
-    from integrations.webhooks import _log_delivery
+    from screenmind.integrations.webhooks import _log_delivery
     _log_delivery("http://test.com", "test", "ok", 200)
 
     log = get_delivery_log()

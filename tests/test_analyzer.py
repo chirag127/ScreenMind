@@ -1,6 +1,6 @@
 """Tests for engine/analyzer.py — response parsing logic (no Ollama needed)."""
 
-from engine.analyzer import GemmaAnalyzer
+from screenmind.engine.analyzer import GemmaAnalyzer
 
 
 def test_parse_clean_json():
@@ -38,7 +38,7 @@ def test_parse_regex_fallback():
 
 def test_normalize_category():
     analyzer = GemmaAnalyzer()
-    from storage.models import ActivityRecord
+    from screenmind.storage.models import ActivityRecord
     # The normalize function checks if a valid category is a substring
     record = ActivityRecord(activity_category="browsing", mood="productive")
     normalized = analyzer._normalize(record)
@@ -48,7 +48,7 @@ def test_normalize_category():
 
 def test_normalize_invalid_category():
     analyzer = GemmaAnalyzer()
-    from storage.models import ActivityRecord
+    from screenmind.storage.models import ActivityRecord
     record = ActivityRecord(activity_category="invalid_thing", mood="unknown_mood")
     normalized = analyzer._normalize(record)
     assert normalized.activity_category == "other"
@@ -57,7 +57,7 @@ def test_normalize_invalid_category():
 
 def test_normalize_confidence_clamping():
     analyzer = GemmaAnalyzer()
-    from storage.models import ActivityRecord
+    from screenmind.storage.models import ActivityRecord
     # Pydantic enforces 0-1 range, so test that normalize handles edge values
     record = ActivityRecord(confidence=1.0)
     normalized = analyzer._normalize(record)

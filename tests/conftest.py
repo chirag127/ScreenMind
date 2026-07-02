@@ -1,16 +1,13 @@
 """Shared pytest fixtures for ScreenMind tests."""
 
-import sys
 import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Ensure project root is importable
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import settings
+
+from screenmind.config import settings
 
 
 @pytest.fixture
@@ -22,7 +19,7 @@ def tmp_data_dir(tmp_path):
 @pytest.fixture
 def mock_settings(tmp_path):
     """Patch settings to use temp directories."""
-    with patch("config.settings") as mock:
+    with patch("screenmind.config.settings") as mock:
         mock.data_path = tmp_path
         mock.screenshots_dir = tmp_path / "screenshots"
         mock.db_path = tmp_path / "test.db"
@@ -55,7 +52,7 @@ def mock_settings(tmp_path):
 @pytest.fixture
 def db(tmp_path):
     """Create a fresh test database."""
-    from storage.database import Database
+    from screenmind.storage.database import Database
     test_db = Database(db_path=tmp_path / "test.db")
     yield test_db
     test_db.close()
@@ -72,8 +69,8 @@ def sample_image():
 @pytest.fixture
 def app(db):
     """Create a test FastAPI app with PIN auth disabled."""
-    import api.dependencies as deps
-    from api.server import create_app
+    import screenmind.api.dependencies as deps
+    from screenmind.api.server import create_app
 
     # Directly clear PIN so auth middleware passes all requests during tests
     original_pin = settings.dashboard_pin_hash
@@ -83,17 +80,17 @@ def app(db):
 
     # Also patch the module-level db references in route modules
     # since they may have been imported with a previous db value
-    import api.routes.timeline as _tl
-    import api.routes.bookmarks as _bm
-    import api.routes.stats as _st
-    import api.routes.data as _dt
-    import api.routes.screenshots as _ss
-    import api.routes.rewind as _rw
-    import api.routes.summary as _sm
-    import api.routes.meetings as _mt
-    import api.routes.agents as _ag
-    import api.routes.search as _sr
-    import api.routes.chat as _ch
+    import screenmind.api.routes.timeline as _tl
+    import screenmind.api.routes.bookmarks as _bm
+    import screenmind.api.routes.stats as _st
+    import screenmind.api.routes.data as _dt
+    import screenmind.api.routes.screenshots as _ss
+    import screenmind.api.routes.rewind as _rw
+    import screenmind.api.routes.summary as _sm
+    import screenmind.api.routes.meetings as _mt
+    import screenmind.api.routes.agents as _ag
+    import screenmind.api.routes.search as _sr
+    import screenmind.api.routes.chat as _ch
 
     for mod in [_tl, _bm, _st, _dt, _ss, _rw, _sm, _mt, _ag, _sr, _ch]:
         mod.db = db

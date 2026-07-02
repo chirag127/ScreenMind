@@ -9,7 +9,7 @@ See: https://github.com/ayushh0110/ScreenMind/issues/6
 
 import pytest
 
-from engine.analyzer import (
+from screenmind.engine.analyzer import (
     GemmaAnalyzer,
     _extract_app_from_title,
     _extract_simple_title,
@@ -17,7 +17,7 @@ from engine.analyzer import (
     _is_more_specific_name,
     _lookup_known_category,
 )
-from storage.models import ActivityRecord
+from screenmind.storage.models import ActivityRecord
 
 
 # ── Helper: _extract_app_from_title ──────────────────────────────────────────

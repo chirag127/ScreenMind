@@ -1,6 +1,6 @@
 """Tests for privacy/data_filter.py — sensitive data redaction."""
 
-from privacy.data_filter import filter_sensitive_text, parse_enabled_types
+from screenmind.privacy.data_filter import filter_sensitive_text, parse_enabled_types
 
 
 def test_redact_credit_card():

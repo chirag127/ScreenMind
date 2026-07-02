@@ -1,8 +1,8 @@
 [run]
 omit =
-    platform_support/linux.py
-    platform_support/macos.py
-    main.py
-    ui/overlay.py
-    capture/voice_recorder.py
-    workers/audio_worker.py
+    screenmind/platform_support/linux.py
+    screenmind/platform_support/macos.py
+    screenmind/main.py
+    screenmind/ui/overlay.py
+    screenmind/capture/voice_recorder.py
+    screenmind/workers/audio_worker.py

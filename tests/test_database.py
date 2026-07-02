@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from storage.models import ScreenshotEntry, ActivityRecord, DailySummary
+from screenmind.storage.models import ScreenshotEntry, ActivityRecord, DailySummary
 
 
 def test_insert_and_get_activity(db):

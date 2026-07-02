@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 @pytest.fixture
 def client():
     """Create a test client with mocked dependencies."""
-    from api.server import create_app
-    from storage.database import Database
+    from screenmind.api.server import create_app
+    from screenmind.storage.database import Database
     from fastapi.testclient import TestClient
 
     db = MagicMock(spec=Database)

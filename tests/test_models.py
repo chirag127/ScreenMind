@@ -1,6 +1,6 @@
 """Tests for storage/models.py — Pydantic data models."""
 
-from storage.models import ActivityRecord, DevContext, ScreenshotEntry, DailySummary
+from screenmind.storage.models import ActivityRecord, DevContext, ScreenshotEntry, DailySummary
 
 
 def test_activity_record_defaults():

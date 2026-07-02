@@ -36,7 +36,7 @@ Edit your Claude Desktop config file:
   "mcpServers": {
     "screenmind": {
       "command": "python",
-      "args": ["C:/path/to/screenmind/mcp_server.py"]
+      "args": ["C:/path/to/screenmind/screenmind.mcp_server"]
     }
   }
 }
@@ -51,7 +51,7 @@ Go to **Settings → MCP** and add:
 {
   "screenmind": {
     "command": "python",
-    "args": ["C:/path/to/screenmind/mcp_server.py"]
+    "args": ["C:/path/to/screenmind/screenmind.mcp_server"]
   }
 }
 ```
@@ -64,7 +64,7 @@ Add to your MCP configuration in `.vscode/mcp.json`:
   "servers": {
     "screenmind": {
       "command": "python",
-      "args": ["C:/path/to/screenmind/mcp_server.py"]
+      "args": ["C:/path/to/screenmind/screenmind.mcp_server"]
     }
   }
 }
@@ -79,7 +79,7 @@ After saving the configuration, restart your AI client. You should see "ScreenMi
 You can test the MCP server locally using the MCP Inspector:
 
 ```bash
-npx @modelcontextprotocol/inspector python mcp_server.py
+npx @modelcontextprotocol/inspector python -m screenmind.mcp_server
 ```
 
 This opens a web UI at `http://127.0.0.1:6274` where you can test each tool interactively.
@@ -104,5 +104,5 @@ Once connected, try asking your AI assistant:
 ## Requirements
 
 - ScreenMind must be installed and have captured some screen data
-- For `capture_now` to work, the ScreenMind app must be running (`python main.py`)
+- For `capture_now` to work, the ScreenMind app must be running (`python -m screenmind`)
 - Python environment with `mcp[cli]` installed

@@ -1,0 +1,711 @@
+"""
+Model Manager for ScreenMind
+Handles llama-server process lifecycle, GGUF model downloads, and model switching.
+"""
+
+import logging
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from pathlib import Path
+from typing import Optional, Callable
+
+from screenmind.config import settings
+
+logger = logging.getLogger("screenmind.engine.model_manager")
+
+
+# Available models with HuggingFace download info
+AVAILABLE_MODELS = [
+    {
+        "key": "gemma-4-e2b",
+        "name": "Gemma 4 E2B",
+        "size": "2B",
+        "vram": "~4 GB",
+        "quality": "Good",
+        "tier": 1,
+        "hf_repo": "unsloth/gemma-4-E2B-it-GGUF",
+        "hf_file": "gemma-4-E2B-it-Q4_K_M.gguf",
+        "audio": True,
+        "vision": True,
+    },
+    {
+        "key": "gemma-4-e4b",
+        "name": "Gemma 4 E4B",
+        "size": "4B",
+        "vram": "~6 GB",
+        "quality": "Great",
+        "tier": 2,
+        "hf_repo": "unsloth/gemma-4-E4B-it-GGUF",
+        "hf_file": "gemma-4-E4B-it-Q4_K_M.gguf",
+        "audio": True,
+        "vision": True,
+    },
+    {
+        "key": "gemma-4-12b",
+        "name": "Gemma 4 12B",
+        "size": "12B",
+        "vram": "~10 GB",
+        "quality": "Excellent",
+        "tier": 3,
+        "hf_repo": "bartowski/gemma-4-12B-it-GGUF",
+        "hf_file": "gemma-4-12B-it-Q4_K_M.gguf",
+        "audio": True,
+        "vision": True,
+    },
+]
+
+
+# Server process state
+_server_process: Optional[subprocess.Popen] = None
+_server_lock = threading.Lock()
+_active_model_key: Optional[str] = None
+
+# Download state — single-flight + thread-safe reads/writes
+_download_lock = threading.Lock()      # guards the entire download→start lifecycle
+_download_state_lock = threading.Lock()  # guards state dict + cancel flag reads/writes
+_cancel_download_flag = False  # cancel signal for active download (guarded by _download_state_lock)
+_download_state: dict = {
+    "active": False,
+    "model": None,
+    "status": "idle",           # idle | downloading | starting | done | error
+    "downloaded_bytes": 0,
+    "message": "",
+}
+
+
+def _set_download_state(**kwargs) -> None:
+    """Thread-safe update of download state."""
+    global _download_state
+    with _download_state_lock:
+        _download_state = {**_download_state, **kwargs}
+
+
+def get_download_state() -> dict:
+    """Get a copy of the current download state (safe from any thread)."""
+    with _download_state_lock:
+        return dict(_download_state)
+
+
+def _clear_error_state() -> None:
+    """Clear a sticky error state (called when a new download or retry starts)."""
+    st = get_download_state()
+    if st["status"] == "error" and not st["active"]:
+        _set_download_state(status="idle", message="")
+
+
+def cancel_download() -> bool:
+    """
+    Request cancellation of an active download.
+    The download thread checks this flag every ~2s and kills the subprocess.
+    Returns True if a download was active and cancel was requested.
+    """
+    global _cancel_download_flag
+    with _download_state_lock:
+        dl = dict(_download_state)
+        if dl["active"] and dl["status"] == "downloading":
+            _cancel_download_flag = True
+            logger.info("Cancel requested")
+            return True
+    return False
+
+
+
+def get_model_info(key: str) -> Optional[dict]:
+    """Get model metadata by key."""
+    for m in AVAILABLE_MODELS:
+        if m["key"] == key:
+            return m
+    return None
+
+
+def is_audio_capable(key: Optional[str] = None) -> bool:
+    """Check if the given (or active) model supports audio input."""
+    k = key or get_active_model() or settings.active_model
+    info = get_model_info(k)
+    return info.get("audio", False) if info else False
+
+
+def get_active_capabilities() -> dict:
+    """Get capability flags for the active model."""
+    k = get_active_model() or settings.active_model
+    info = get_model_info(k)
+    if not info:
+        return {"audio": False, "vision": False}
+    return {"audio": info.get("audio", False), "vision": info.get("vision", False)}
+
+
+def list_models() -> list:
+    """List all available models with download status."""
+    global _active_model_key
+    result = []
+    for m in AVAILABLE_MODELS:
+        status = "not_installed"
+        if is_model_downloaded(m["key"]):
+            status = "active" if m["key"] == _active_model_key else "downloaded"
+        result.append({**m, "status": status})
+    return result
+
+
+def is_model_downloaded(key: str) -> bool:
+    """
+    Check if a model's GGUF file is fully downloaded in the HuggingFace cache.
+
+    Guards against false positives from partial/interrupted downloads by checking:
+    1. The model cache directory exists
+    2. At least one .gguf blob file exists in snapshots/
+    3. No .incomplete files exist (HF hub creates these during downloads)
+    """
+    info = get_model_info(key)
+    if not info:
+        return False
+    # Check HuggingFace hub cache
+    cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+    if not cache_dir.exists():
+        return False
+    repo_slug = info["hf_repo"].replace("/", "--")
+    model_cache = cache_dir / f"models--{repo_slug}"
+    if not model_cache.exists():
+        return False
+
+    # Check for .incomplete files — indicates download was interrupted
+    for p in model_cache.rglob("*.incomplete"):
+        return False
+
+    # Verify at least one GGUF blob actually exists in snapshots
+    # HF cache stores actual files in blobs/ as hash-named files,
+    # and snapshots/ contains symlinks/pointers. Check blobs/ for non-empty files.
+    blobs_dir = model_cache / "blobs"
+    if blobs_dir.exists():
+        blob_files = [f for f in blobs_dir.iterdir() if f.is_file() and f.stat().st_size > 1024 * 1024]
+        if blob_files:
+            return True
+
+    # Fallback: check if any snapshot directory has content
+    snapshots_dir = model_cache / "snapshots"
+    if snapshots_dir.exists():
+        for snap in snapshots_dir.iterdir():
+            if snap.is_dir() and any(snap.iterdir()):
+                return True
+
+    return False
+
+
+def _cleanup_incomplete_cache(hf_repo: str) -> None:
+    """Remove .incomplete files from a killed HF download to avoid disk waste."""
+    try:
+        cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+        repo_slug = hf_repo.replace("/", "--")
+        model_cache = cache_dir / f"models--{repo_slug}"
+        if model_cache.exists():
+            removed = 0
+            for p in model_cache.rglob("*.incomplete"):
+                try:
+                    p.unlink()
+                    removed += 1
+                except OSError:
+                    pass
+            if removed:
+                logger.info(f"Cleaned up {removed} incomplete file(s) for {hf_repo}")
+    except Exception as e:
+        logger.debug(f"Cache cleanup error: {e}")
+
+
+def _do_download(key: str) -> bool:
+    """
+    Internal: download a model GGUF from HuggingFace.
+    Caller must hold _download_lock. Updates _download_state as it progresses.
+    Supports cancellation via _cancel_download_flag.
+    """
+    global _cancel_download_flag
+    info = get_model_info(key)
+    if not info:
+        return False
+
+    with _download_state_lock:
+        _cancel_download_flag = False
+    _set_download_state(
+        active=True, model=key, status="downloading",
+        downloaded_bytes=0, message=f"Downloading {info['name']}...",
+    )
+
+    logger.info(f"Downloading {info['name']} from {info['hf_repo']}...")
+
+    try:
+        # Use hf_hub_download() Python API — `python -m huggingface_hub` is NOT
+        # a valid CLI entry point ("is a package and cannot be directly executed").
+        cmd = [
+            sys.executable, "-c",
+            "from huggingface_hub import hf_hub_download; "
+            f"hf_hub_download(repo_id='{info['hf_repo']}', filename='{info['hf_file']}')",
+        ]
+
+        # Redirect stdout to DEVNULL (progress is polled from cache-dir size).
+        # Capture stderr to a temp file so we keep error messages without
+        # risking a PIPE deadlock — HF writes progress bars to stderr
+        # continuously, which can fill the 64KB OS pipe buffer and hang.
+        err_file = tempfile.TemporaryFile()
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,   # prevent hangs from HF auth prompts
+            stdout=subprocess.DEVNULL,
+            stderr=err_file,
+        )
+
+        # Poll for progress while download runs
+        cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+        repo_slug = info["hf_repo"].replace("/", "--")
+        model_cache = cache_dir / f"models--{repo_slug}"
+
+        while proc.poll() is None:
+            # Check cancel flag (under lock for consistency)
+            with _download_state_lock:
+                should_cancel = _cancel_download_flag
+            if should_cancel:
+                logger.info(f"Download cancelled: {info['name']}")
+                try:
+                    proc.kill()
+                    proc.wait(timeout=10)
+                except Exception:
+                    pass  # Already dead or OS error — fine
+                # Brief sleep for Windows handle release before cleanup
+                time.sleep(0.5)
+                # Clean up .incomplete files to avoid disk waste
+                _cleanup_incomplete_cache(info["hf_repo"])
+                _set_download_state(
+                    active=False, status="idle", model="",
+                    downloaded_bytes=0, message="Download cancelled",
+                )
+                with _download_state_lock:
+                    _cancel_download_flag = False
+                return False
+
+            time.sleep(2)  # 2s check interval (faster cancel response)
+            total_bytes = 0
+            try:
+                if model_cache.exists():
+                    for f in model_cache.rglob("*"):
+                        if f.is_file():
+                            try:
+                                total_bytes += f.stat().st_size
+                            except OSError:
+                                pass
+            except Exception:
+                pass
+            # Monotonic: never go backwards (#6)
+            cur = get_download_state().get("downloaded_bytes", 0)
+            _set_download_state(downloaded_bytes=max(cur, total_bytes),
+                                message=f"Downloading {info['name']}...")
+
+
+        if proc.returncode == 0:
+            logger.info(f"Download complete: {info['name']}")
+            err_file.close()
+            return True
+        else:
+            err_file.seek(0)
+            stderr = err_file.read().decode(errors="replace")[:200]
+            err_file.close()
+            logger.error(f"Download failed: {stderr}")
+            _set_download_state(status="error", message=f"Download failed: {stderr[:100]}")
+            return False
+    except Exception as e:
+        logger.error(f"Download error: {e}")
+        _set_download_state(status="error", message=f"Error: {str(e)[:100]}")
+        try:
+            err_file.close()
+        except Exception:
+            pass
+        return False
+
+
+def start_server(model_key: Optional[str] = None, timeout: int = 60) -> bool:
+    """
+    Start llama-server with the specified model.
+    If already running with the same model, does nothing.
+    If running with a different model, restarts.
+
+    Args:
+        timeout: seconds to wait for /health (60 normal, 180 for cold start after download)
+    """
+    global _server_process, _active_model_key
+
+    key = model_key or settings.active_model
+    info = get_model_info(key)
+    if not info:
+        logger.warning(f"Unknown model: {key}")
+        return False
+
+    with _server_lock:
+        # Already running with this model?
+        if _server_process and _server_process.poll() is None and _active_model_key == key:
+            return True
+
+        # Stop existing server (inline — we already hold the lock)
+        if _server_process:
+            try:
+                _server_process.terminate()
+                _server_process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                _server_process.kill()
+            except Exception:
+                pass
+            _server_process = None
+            _active_model_key = None
+
+        # Build llama-server command
+        hf_spec = f"{info['hf_repo']}:{info['hf_file'].replace('.gguf', '')}"
+        port = settings.llama_server_port
+
+        # Find llama-server binary: check project's llama/ folder first, then PATH
+        bin_name = "llama-server.exe" if sys.platform == "win32" else "llama-server"
+        llama_bin = bin_name
+        project_bin = Path(__file__).parent.parent.parent / "llama" / bin_name
+        if project_bin.exists():
+            llama_bin = str(project_bin)
+
+        cmd = [
+            llama_bin,
+            "-hf", hf_spec,
+            "--mmproj-auto",
+            "--port", str(port),
+            "-ngl", str(settings.num_gpu_layers),
+            "-c", str(settings.context_window),
+            "--parallel", "1",   # Single slot — analysis/audio/chat are sequential
+            "--no-warmup",
+        ]
+
+        # Flash attention — faster + less VRAM, but not all GPUs support it
+        if settings.flash_attention:
+            cmd.extend(["--flash-attn", "on"])
+
+        # KV cache quantization — saves ~60% KV VRAM with negligible quality loss
+        if settings.kv_cache_quant:
+            cmd.extend(["--cache-type-k", "q8_0", "--cache-type-v", "q4_0"])
+
+        logger.info(f"Starting llama-server: {info['name']} on port {port} (timeout={timeout}s)")
+
+        try:
+            startupinfo = None
+            if sys.platform == "win32":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = 0
+
+            # Use DEVNULL for stdout/stderr to prevent pipe buffer deadlock.
+            # llama-server writes a lot of logs — if we use PIPE and never read,
+            # the OS buffer fills and the process hangs.
+            _server_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                startupinfo=startupinfo,
+            )
+
+            # Wait for server to be ready (poll /health)
+            for i in range(timeout):
+                time.sleep(1)
+                if _server_process.poll() is not None:
+                    logger.warning(f"Server exited early (code: {_server_process.returncode})")
+                    _server_process = None
+                    return False
+                try:
+                    import httpx
+                    r = httpx.get(f"http://127.0.0.1:{port}/health", timeout=2)
+                    if r.status_code == 200:
+                        _active_model_key = key
+                        logger.info(f"Server ready ({i+1}s)")
+                        return True
+                except Exception:
+                    pass
+
+            logger.warning(f"Server failed to start within {timeout}s")
+            stop_server()
+            return False
+
+        except FileNotFoundError:
+            logger.error("llama-server not found.")
+            if sys.platform == "win32":
+                logger.error("  Run: python -m screenmind.setup_llama")
+                logger.error("  Or download from: https://github.com/ggml-org/llama.cpp/releases")
+            elif sys.platform == "darwin":
+                logger.error("  Run: brew install llama.cpp")
+                logger.error("  Or:  python -m screenmind.setup_llama")
+            else:
+                logger.error("  Run: python -m screenmind.setup_llama")
+                logger.error("  Or download from: https://github.com/ggml-org/llama.cpp/releases")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to start server: {e}")
+            return False
+
+
+def stop_server():
+    """Stop the running llama-server process."""
+    global _server_process, _active_model_key
+
+    with _server_lock:
+        if _server_process:
+            try:
+                _server_process.terminate()
+                _server_process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                _server_process.kill()
+            except Exception:
+                pass
+            _server_process = None
+            _active_model_key = None
+            logger.info("Server stopped")
+
+
+def switch_model(key: str) -> bool:
+    """
+    Switch to a different model (restarts server).
+    Respects _download_lock: refuses if a download lifecycle is active,
+    and prevents concurrent switches from racing each other.
+    Sets transient 'starting' state so UI shows "Booting up..." instead of "error".
+    """
+    info = get_model_info(key)
+    if not info:
+        return False
+    if not is_model_downloaded(key):
+        logger.warning(f"Cannot switch to {key} — not downloaded")
+        return False
+    if not _download_lock.acquire(blocking=False):
+        logger.warning("Lifecycle in progress, switch ignored")
+        return False
+    try:
+        _clear_error_state()
+        _set_download_state(
+            active=True, model=key, status="starting",
+            downloaded_bytes=0, message=f"Switching to {info['name']}...",
+        )
+        settings.save_runtime_overrides({"active_model": key})
+        result = start_server(key)
+        return result
+    finally:
+        _set_download_state(
+            active=False, status="idle" if is_server_running() else "error",
+            model="", downloaded_bytes=0,
+            message="" if is_server_running() else "Server failed to start.",
+        )
+        _download_lock.release()
+
+
+def restart_server() -> bool:
+    """
+    Force-restart the server with the current active model.
+    Always stops and restarts, even if the same key is active.
+    Used by the Retry button.
+
+    Respects _download_lock: refuses if a download lifecycle is active,
+    and prevents concurrent retries from racing each other.
+    Sets transient 'starting' state so UI shows "Booting up..." instead of "error".
+    """
+    if not _download_lock.acquire(blocking=False):
+        logger.warning("Lifecycle in progress, retry ignored")
+        return False
+
+    try:
+        _clear_error_state()
+        _set_download_state(
+            active=True, model=settings.active_model, status="starting",
+            downloaded_bytes=0, message="Restarting server...",
+        )
+        stop_server()
+        result = start_server(settings.active_model, timeout=180)
+        return result
+    finally:
+        _set_download_state(
+            active=False, status="idle" if is_server_running() else "error",
+            model="", downloaded_bytes=0,
+            message="" if is_server_running() else "Server failed to start.",
+        )
+        _download_lock.release()
+
+
+def get_active_model() -> Optional[str]:
+    """Get the currently active model key."""
+    return _active_model_key
+
+
+def is_server_running() -> bool:
+    """Check if llama-server process is alive."""
+    return _server_process is not None and _server_process.poll() is None
+
+
+def get_model_status() -> dict:
+    """
+    Get the full model status for the frontend.
+
+    Returns a dict with:
+      status: "no_model" | "downloading" | "starting" | "ready" | "error"
+      active_model: str | None
+      capabilities: {audio: bool, vision: bool}
+      download: dict | None  (download state if active)
+    """
+    dl = get_download_state()
+    active = get_active_model() or settings.active_model
+    caps = get_active_capabilities()
+
+    # Check download/lifecycle state first (active=True means lifecycle in progress)
+    if dl["active"]:
+        return {
+            "status": dl["status"],  # "downloading" or "starting"
+            "active_model": active,
+            "model_downloaded": is_model_downloaded(active),
+            "capabilities": caps,
+            "download": {
+                "model": dl["model"],
+                "downloaded_bytes": dl["downloaded_bytes"],
+                "message": dl["message"],
+                "status": dl["status"],
+            },
+        }
+
+    # Sticky error from a failed download→start cycle (#4)
+    if dl["status"] == "error":
+        return {
+            "status": "error",
+            "active_model": active,
+            "model_downloaded": is_model_downloaded(active),
+            "capabilities": caps,
+            "download": None,
+            "message": dl["message"],
+        }
+
+    # No download in progress — check server
+    if is_server_running():
+        return {
+            "status": "ready",
+            "active_model": active,
+            "model_downloaded": True,
+            "capabilities": caps,
+            "download": None,
+        }
+
+    # Server not running — is a model at least downloaded?
+    if is_model_downloaded(active):
+        return {
+            "status": "error",  # downloaded but server not running
+            "active_model": active,
+            "model_downloaded": True,
+            "capabilities": caps,
+            "download": None,
+            "message": "Server not running. Click Retry to restart.",
+        }
+
+    # Check if ANY model is downloaded (active might be wrong)
+    for m in AVAILABLE_MODELS:
+        if is_model_downloaded(m["key"]):
+            return {
+                "status": "error",
+                "active_model": active,
+                "model_downloaded": True,
+                "capabilities": caps,
+                "download": None,
+                "message": f"Model {m['key']} is downloaded but not active. Switch in Settings.",
+            }
+
+    return {
+        "status": "no_model",
+        "active_model": active,
+        "model_downloaded": False,
+        "capabilities": caps,
+        "download": None,
+    }
+
+
+def _check_model_disk_space(key: str) -> bool:
+    """Check disk space before model download. Returns True if enough space."""
+    info = get_model_info(key)
+    if not info:
+        return True
+
+    # Estimate GGUF sizes at Q4_K_M quantization
+    estimated_sizes = {
+        "gemma-4-e2b": 1.5 * 1024**3,
+        "gemma-4-e4b": 3.0 * 1024**3,
+        "gemma-4-12b": 7.5 * 1024**3,
+    }
+    model_size = estimated_sizes.get(key, 5 * 1024**3)  # default 5GB
+    headroom = 1 * 1024**3  # 1GB headroom
+    required = model_size + headroom
+
+    try:
+        usage = shutil.disk_usage(Path.home())
+        if usage.free < required:
+            free_gb = usage.free / (1024**3)
+            need_gb = required / (1024**3)
+            logger.warning(f"Low disk space! Free: {free_gb:.1f}GB, Need: ~{need_gb:.1f}GB")
+            _set_download_state(
+                status="error",
+                message=f"Not enough disk space. Free: {free_gb:.1f}GB, Need: ~{need_gb:.1f}GB",
+            )
+            return False
+        return True
+    except Exception:
+        return True  # If we can't check, don't block
+
+
+def download_and_start(key: str) -> bool:
+    """
+    Download a model, switch to it, and start the server.
+    Used by the lock screen "Download" button.
+
+    Holds _download_lock across the ENTIRE lifecycle (download→start)
+    so no second request can slip in between. (#3)
+
+    Updates download state through: downloading → starting → ready/error.
+    On failure, leaves error state sticky so the retry screen shows. (#4)
+    """
+    if not _download_lock.acquire(blocking=False):
+        logger.warning(f"Lifecycle already in progress, rejecting {key}")
+        return False
+
+    try:
+        # Clear any previous sticky error
+        _clear_error_state()
+
+        # Disk space check (#8)
+        if not _check_model_disk_space(key):
+            return False
+
+        # Download phase
+        ok = _do_download(key)
+        if not ok:
+            # Error state is already set by _do_download — leave it sticky
+            return False
+
+        # Transition to "starting" state
+        _set_download_state(status="starting", message="Starting model server...")
+
+        # Switch active model and start server with extended timeout (#7)
+        settings.save_runtime_overrides({"active_model": key})
+        started = start_server(key, timeout=180)  # 3 min for cold GGUF load
+
+        if started:
+            _set_download_state(
+                active=False, status="idle", model=None,
+                downloaded_bytes=0, message="",
+            )
+            return True
+        else:
+            # Leave error sticky (#4)
+            _set_download_state(
+                active=False, status="error",
+                message="Server failed to start. Check GPU/VRAM.",
+            )
+            return False
+    except Exception as e:
+        _set_download_state(
+            active=False, status="error",
+            message=f"Unexpected error: {str(e)[:100]}",
+        )
+        return False
+    finally:
+        _download_lock.release()

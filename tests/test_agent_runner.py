@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from engine.agent_runner import (
+from screenmind.engine.agent_runner import (
     _parse_md_frontmatter, get_agents_dir, get_agent_log, _log_run,
 )
 

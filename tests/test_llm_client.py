@@ -4,7 +4,7 @@ import threading
 from unittest.mock import patch, MagicMock, PropertyMock
 import httpx
 
-from engine.llm_client import (
+from screenmind.engine.llm_client import (
     InferenceCancelled, cancel_current_inference, is_inference_active,
     chat, chat_with_images, transcribe_audio, generate, is_available,
     get_server_status, _cancel_event, _client_lock,
@@ -32,7 +32,7 @@ class TestInferenceCancellation:
         assert _cancel_event.is_set()
         _cancel_event.clear()
 
-    @patch("engine.llm_client.httpx.Client")
+    @patch("screenmind.engine.llm_client.httpx.Client")
     def test_chat_clears_cancel_event_on_start(self, mock_client_cls):
         """Each chat() call clears stale cancel flags."""
         _cancel_event.set()
@@ -44,7 +44,7 @@ class TestInferenceCancellation:
         # Flag should be cleared at start of chat()
         assert not _cancel_event.is_set()
 
-    @patch("engine.llm_client.httpx.Client")
+    @patch("screenmind.engine.llm_client.httpx.Client")
     def test_chat_raises_cancelled_when_flag_set(self, mock_client_cls):
         """If cancel flag is set during request, InferenceCancelled is raised."""
         def side_effect(*args, **kwargs):
@@ -55,7 +55,7 @@ class TestInferenceCancellation:
             chat([{"role": "user", "content": "test"}])
         _cancel_event.clear()
 
-    @patch("engine.llm_client.httpx.Client")
+    @patch("screenmind.engine.llm_client.httpx.Client")
     def test_active_client_set_during_request(self, mock_client_cls):
         """_active_client is set during request and cleared after."""
         active_during = []
@@ -76,7 +76,7 @@ class TestInferenceCancellation:
 class TestChat:
     """Tests for the chat() function."""
 
-    @patch("engine.llm_client.httpx.Client")
+    @patch("screenmind.engine.llm_client.httpx.Client")
     def test_chat_returns_content(self, mock_client_cls):
         """chat() returns the assistant message content."""
         mock_resp = MagicMock()
@@ -86,7 +86,7 @@ class TestChat:
         result = chat([{"role": "user", "content": "hi"}])
         assert result == "Hello!"
 
-    @patch("engine.llm_client.httpx.Client")
+    @patch("screenmind.engine.llm_client.httpx.Client")
     def test_chat_sends_correct_payload(self, mock_client_cls):
         """chat() sends messages, temperature, max_tokens in payload."""
         mock_resp = MagicMock()
@@ -103,7 +103,7 @@ class TestChat:
         assert payload["temperature"] == 0.5
         assert payload["max_tokens"] == 512
 
-    @patch("engine.llm_client.httpx.Client")
+    @patch("screenmind.engine.llm_client.httpx.Client")
     def test_chat_raises_on_http_error(self, mock_client_cls):
         """chat() raises on non-cancelled HTTP errors."""
         mock_client_cls.return_value.post.side_effect = httpx.HTTPStatusError(
@@ -116,7 +116,7 @@ class TestChat:
 class TestChatWithImages:
     """Tests for chat_with_images()."""
 
-    @patch("engine.llm_client.chat")
+    @patch("screenmind.engine.llm_client.chat")
     def test_encodes_images_as_base64(self, mock_chat):
         """Images are base64 encoded in the message."""
         mock_chat.return_value = "I see an image"
@@ -131,7 +131,7 @@ class TestChatWithImages:
         assert user_msg["content"][0]["type"] == "text"
         assert user_msg["content"][1]["type"] == "image_url"
 
-    @patch("engine.llm_client.chat")
+    @patch("screenmind.engine.llm_client.chat")
     def test_includes_system_message(self, mock_chat):
         """System message is prepended when provided."""
         mock_chat.return_value = "ok"
@@ -140,7 +140,7 @@ class TestChatWithImages:
         assert messages[0]["role"] == "system"
         assert messages[0]["content"] == "You are helpful"
 
-    @patch("engine.llm_client.chat")
+    @patch("screenmind.engine.llm_client.chat")
     def test_multiple_images(self, mock_chat):
         """Multiple images are all included."""
         mock_chat.return_value = "ok"
@@ -154,8 +154,8 @@ class TestChatWithImages:
 class TestTranscribeAudio:
     """Tests for transcribe_audio()."""
 
-    @patch("engine.llm_client.chat")
-    @patch("engine.model_manager.is_audio_capable", return_value=True)
+    @patch("screenmind.engine.llm_client.chat")
+    @patch("screenmind.engine.model_manager.is_audio_capable", return_value=True)
     def test_sends_audio_as_input_audio(self, _cap, mock_chat):
         """Audio bytes are sent as input_audio type."""
         mock_chat.return_value = "Hello world"
@@ -167,8 +167,8 @@ class TestTranscribeAudio:
         assert len(audio_part) == 1
         assert audio_part[0]["input_audio"]["format"] == "wav"
 
-    @patch("engine.model_manager.is_audio_capable", return_value=False)
-    @patch("engine.model_manager.get_active_model", return_value="non-audio-model")
+    @patch("screenmind.engine.model_manager.is_audio_capable", return_value=False)
+    @patch("screenmind.engine.model_manager.get_active_model", return_value="non-audio-model")
     def test_raises_on_non_audio_model(self, _get, _cap):
         """transcribe_audio raises ValueError when model doesn't support audio."""
         with pytest.raises(ValueError, match="does not support audio"):
@@ -178,7 +178,7 @@ class TestTranscribeAudio:
 class TestGenerate:
     """Tests for generate()."""
 
-    @patch("engine.llm_client.chat")
+    @patch("screenmind.engine.llm_client.chat")
     def test_generate_wraps_as_user_message(self, mock_chat):
         """generate() wraps prompt as a single user message."""
         mock_chat.return_value = "response"
@@ -193,17 +193,17 @@ class TestGenerate:
 class TestHealthCheck:
     """Tests for is_available() and get_server_status()."""
 
-    @patch("engine.llm_client.httpx.get")
+    @patch("screenmind.engine.llm_client.httpx.get")
     def test_is_available_true(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200)
         assert is_available() is True
 
-    @patch("engine.llm_client.httpx.get")
+    @patch("screenmind.engine.llm_client.httpx.get")
     def test_is_available_false_on_error(self, mock_get):
         mock_get.side_effect = Exception("refused")
         assert is_available() is False
 
-    @patch("engine.llm_client.httpx.get")
+    @patch("screenmind.engine.llm_client.httpx.get")
     def test_get_server_status_ok(self, mock_get):
         mock_resp = MagicMock(status_code=200, text='{"status":"ok"}')
         mock_resp.json.return_value = {"status": "ok"}
@@ -211,13 +211,13 @@ class TestHealthCheck:
         status = get_server_status()
         assert status["status"] == "ok"
 
-    @patch("engine.llm_client.httpx.get")
+    @patch("screenmind.engine.llm_client.httpx.get")
     def test_get_server_status_unreachable(self, mock_get):
         mock_get.side_effect = httpx.ConnectError("refused")
         status = get_server_status()
         assert status["status"] == "unreachable"
 
-    @patch("engine.llm_client.httpx.get")
+    @patch("screenmind.engine.llm_client.httpx.get")
     def test_get_server_status_http_error(self, mock_get):
         mock_get.return_value = MagicMock(status_code=503)
         status = get_server_status()

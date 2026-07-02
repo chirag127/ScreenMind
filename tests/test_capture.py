@@ -2,7 +2,7 @@
 
 from PIL import Image
 
-from capture.dedup import ScreenDeduplicator
+from screenmind.capture.dedup import ScreenDeduplicator
 
 
 def test_dedup_first_frame_never_duplicate():

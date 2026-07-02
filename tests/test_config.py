@@ -1,6 +1,6 @@
 """Tests for config.py — settings parsing and properties."""
 
-from config import Settings
+from screenmind.config import Settings
 
 
 def test_default_settings():

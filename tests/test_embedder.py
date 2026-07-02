@@ -2,7 +2,7 @@
 
 import pytest
 
-from engine.embedder import Embedder
+from screenmind.engine.embedder import Embedder
 
 
 @pytest.fixture(scope="module")

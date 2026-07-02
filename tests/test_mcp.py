@@ -9,8 +9,8 @@ from datetime import date, timedelta
 @pytest.fixture(autouse=True)
 def mock_mcp_deps():
     """Mock MCP server dependencies."""
-    with patch("mcp_server.db") as mock_db, \
-         patch("mcp_server.embedder") as mock_embedder:
+    with patch("screenmind.mcp_server.db") as mock_db, \
+         patch("screenmind.mcp_server.embedder") as mock_embedder:
         mock_db._get_conn.return_value = MagicMock()
         mock_db._decode_embedding.return_value = None
         mock_db.get_stats.return_value = {
@@ -30,7 +30,7 @@ class TestGetStats:
     """Tests for get_stats tool."""
 
     def test_returns_valid_json(self, mock_mcp_deps):
-        from mcp_server import get_stats
+        from screenmind.mcp_server import get_stats
         result = get_stats()
         data = json.loads(result)
         assert "total_activities" in data
@@ -38,7 +38,7 @@ class TestGetStats:
 
     def test_calls_db_with_date_range(self, mock_mcp_deps):
         mock_db, _ = mock_mcp_deps
-        from mcp_server import get_stats
+        from screenmind.mcp_server import get_stats
         get_stats()
         mock_db.get_stats.assert_called_once()
         args = mock_db.get_stats.call_args
@@ -49,14 +49,14 @@ class TestGetActivityByTime:
     """Tests for get_activity_by_time tool."""
 
     def test_invalid_date_returns_error(self, mock_mcp_deps):
-        from mcp_server import get_activity_by_time
+        from screenmind.mcp_server import get_activity_by_time
         result = get_activity_by_time("yesterday")
         data = json.loads(result)
         assert "error" in data
         assert "YYYY-MM-DD" in data["error"]
 
     def test_invalid_date_formats(self, mock_mcp_deps):
-        from mcp_server import get_activity_by_time
+        from screenmind.mcp_server import get_activity_by_time
         for bad_date in ["2026/05/20", "20-05-2026", "May 20", "last tuesday", ""]:
             data = json.loads(get_activity_by_time(bad_date))
             assert "error" in data
@@ -64,7 +64,7 @@ class TestGetActivityByTime:
     def test_valid_date_no_error(self, mock_mcp_deps):
         mock_db, _ = mock_mcp_deps
         mock_db._get_conn.return_value.execute.return_value.fetchall.return_value = []
-        from mcp_server import get_activity_by_time
+        from screenmind.mcp_server import get_activity_by_time
         result = get_activity_by_time("2026-05-20")
         data = json.loads(result)
         assert "error" not in data
@@ -72,13 +72,13 @@ class TestGetActivityByTime:
     def test_valid_date_with_hours(self, mock_mcp_deps):
         mock_db, _ = mock_mcp_deps
         mock_db._get_conn.return_value.execute.return_value.fetchall.return_value = []
-        from mcp_server import get_activity_by_time
+        from screenmind.mcp_server import get_activity_by_time
         result = get_activity_by_time("2026-05-20", start_hour=9, end_hour=17)
         data = json.loads(result)
         assert "error" not in data
 
     def test_invalid_hours(self, mock_mcp_deps):
-        from mcp_server import get_activity_by_time
+        from screenmind.mcp_server import get_activity_by_time
         result = get_activity_by_time("2026-05-20", start_hour=25)
         data = json.loads(result)
         assert "error" in data
@@ -90,7 +90,7 @@ class TestGetScreenshot:
     def test_nonexistent_activity(self, mock_mcp_deps):
         mock_db, _ = mock_mcp_deps
         mock_db._get_conn.return_value.execute.return_value.fetchone.return_value = None
-        from mcp_server import get_screenshot
+        from screenmind.mcp_server import get_screenshot
         result = get_screenshot(99999)
         data = json.loads(result)
         assert "error" in data
@@ -98,7 +98,7 @@ class TestGetScreenshot:
     def test_no_screenshot_path(self, mock_mcp_deps):
         mock_db, _ = mock_mcp_deps
         mock_db._get_conn.return_value.execute.return_value.fetchone.return_value = {"screenshot_path": ""}
-        from mcp_server import get_screenshot
+        from screenmind.mcp_server import get_screenshot
         result = get_screenshot(1)
         data = json.loads(result)
         assert "error" in data
@@ -108,8 +108,8 @@ class TestGetScreenshot:
         mock_db, _ = mock_mcp_deps
         evil_path = str(tmp_path / ".." / ".." / "etc" / "passwd")
         mock_db._get_conn.return_value.execute.return_value.fetchone.return_value = {"screenshot_path": evil_path}
-        from mcp_server import get_screenshot
-        with patch("mcp_server.settings") as mock_settings:
+        from screenmind.mcp_server import get_screenshot
+        with patch("screenmind.mcp_server.settings") as mock_settings:
             mock_settings.screenshots_dir = tmp_path / "screenshots"
             result = get_screenshot(1)
         data = json.loads(result)
@@ -124,8 +124,8 @@ class TestGetScreenshot:
         f.write_bytes(b"\xff\xd8" + b"\x00" * 1000)
 
         mock_db._get_conn.return_value.execute.return_value.fetchone.return_value = {"screenshot_path": str(f)}
-        from mcp_server import get_screenshot
-        with patch("mcp_server.settings") as mock_settings:
+        from screenmind.mcp_server import get_screenshot
+        with patch("screenmind.mcp_server.settings") as mock_settings:
             mock_settings.screenshots_dir = ss_dir
             result = get_screenshot(1)
         data = json.loads(result)
@@ -140,7 +140,7 @@ class TestSearchAudio:
     def test_no_results(self, mock_mcp_deps):
         mock_db, _ = mock_mcp_deps
         mock_db._get_conn.return_value.execute.return_value.fetchall.return_value = []
-        from mcp_server import search_audio
+        from screenmind.mcp_server import search_audio
         result = search_audio("budget meeting")
         data = json.loads(result)
         assert data["count"] == 0
@@ -153,7 +153,7 @@ class TestSearchAudio:
              "transcript": "We discussed the budget for Q3 and agreed on 50k",
              "summary": "Budget discussion"}
         ]
-        from mcp_server import search_audio
+        from screenmind.mcp_server import search_audio
         result = search_audio("budget")
         data = json.loads(result)
         assert data["count"] == 1
@@ -163,7 +163,7 @@ class TestSearchAudio:
         """% and _ in query don't act as SQL wildcards."""
         mock_db, _ = mock_mcp_deps
         mock_db._get_conn.return_value.execute.return_value.fetchall.return_value = []
-        from mcp_server import search_audio
+        from screenmind.mcp_server import search_audio
         search_audio("100% done_task")
         # Verify the escaped query was passed
         call_args = mock_db._get_conn.return_value.execute.call_args
@@ -178,7 +178,7 @@ class TestGetDailySummary:
     def test_no_summary_available(self, mock_mcp_deps):
         mock_db, _ = mock_mcp_deps
         mock_db.get_daily_summary.return_value = None
-        from mcp_server import get_daily_summary
+        from screenmind.mcp_server import get_daily_summary
         result = get_daily_summary("2026-05-20")
         data = json.loads(result)
         assert "message" in data
@@ -187,7 +187,7 @@ class TestGetDailySummary:
     def test_defaults_to_today(self, mock_mcp_deps):
         mock_db, _ = mock_mcp_deps
         mock_db.get_daily_summary.return_value = None
-        from mcp_server import get_daily_summary
+        from screenmind.mcp_server import get_daily_summary
         result = get_daily_summary()
         data = json.loads(result)
         assert data["date"] == date.today().isoformat()
@@ -199,7 +199,7 @@ class TestGetDailySummary:
             "standup": "Worked on auth module",
             "created_at": "2026-05-20T23:00:00",
         }
-        from mcp_server import get_daily_summary
+        from screenmind.mcp_server import get_daily_summary
         result = get_daily_summary("2026-05-20")
         data = json.loads(result)
         assert "Productive day" in data["summary"]
@@ -211,7 +211,7 @@ class TestGetRecentActivity:
     def test_empty_results(self, mock_mcp_deps):
         mock_db, _ = mock_mcp_deps
         mock_db._get_conn.return_value.execute.return_value.fetchall.return_value = []
-        from mcp_server import get_recent_activity
+        from screenmind.mcp_server import get_recent_activity
         result = get_recent_activity()
         data = json.loads(result)
         assert data["count"] == 0
@@ -219,7 +219,7 @@ class TestGetRecentActivity:
     def test_respects_count_limit(self, mock_mcp_deps):
         mock_db, _ = mock_mcp_deps
         mock_db._get_conn.return_value.execute.return_value.fetchall.return_value = []
-        from mcp_server import get_recent_activity
+        from screenmind.mcp_server import get_recent_activity
         get_recent_activity(count=5)
         call_args = mock_db._get_conn.return_value.execute.call_args
         assert 5 in call_args[0][1]  # LIMIT param
@@ -227,7 +227,7 @@ class TestGetRecentActivity:
     def test_caps_at_50(self, mock_mcp_deps):
         mock_db, _ = mock_mcp_deps
         mock_db._get_conn.return_value.execute.return_value.fetchall.return_value = []
-        from mcp_server import get_recent_activity
+        from screenmind.mcp_server import get_recent_activity
         get_recent_activity(count=999)
         call_args = mock_db._get_conn.return_value.execute.call_args
         assert 50 in call_args[0][1]  # capped to 50
@@ -241,7 +241,7 @@ class TestCaptureNow:
     def test_success(self, mock_request, mock_urlopen, mock_mcp_deps):
         mock_urlopen.return_value.__enter__ = MagicMock()
         mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
-        from mcp_server import capture_now
+        from screenmind.mcp_server import capture_now
         result = capture_now()
         data = json.loads(result)
         assert data["status"] == "captured"
@@ -250,7 +250,7 @@ class TestCaptureNow:
     def test_server_not_running(self, mock_urlopen, mock_mcp_deps):
         import urllib.error
         mock_urlopen.side_effect = urllib.error.URLError("refused")
-        from mcp_server import capture_now
+        from screenmind.mcp_server import capture_now
         result = capture_now()
         data = json.loads(result)
         assert data["status"] == "error"

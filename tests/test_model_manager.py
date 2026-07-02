@@ -13,7 +13,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from engine import model_manager
+from screenmind.engine import model_manager
 
 
 class TestAudioCapability:
@@ -88,7 +88,7 @@ class TestSwitchModelGuards:
             return True
 
         with patch.object(model_manager, "start_server", side_effect=capture_start_server):
-            with patch("engine.model_manager.settings") as mock_settings:
+            with patch("screenmind.engine.model_manager.settings") as mock_settings:
                 mock_settings.active_model = "gemma-4-e2b"
                 model_manager.switch_model("gemma-4-e2b")
         assert "starting" in states_during

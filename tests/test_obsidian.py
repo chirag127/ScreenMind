@@ -1,5 +1,5 @@
 """Tests for integrations/obsidian.py — file I/O with tmp_path."""
-from integrations.obsidian import export_summary
+from screenmind.integrations.obsidian import export_summary
 
 
 class TestExportSummary:

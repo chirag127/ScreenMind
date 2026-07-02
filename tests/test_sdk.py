@@ -1,13 +1,13 @@
 """Tests for screenmind_sdk.py — mock HTTP, test helpers and state."""
 import json
 from unittest.mock import patch, MagicMock
-import screenmind_sdk as sdk
+import screenmind.screenmind_sdk as sdk
 
 
 # ── HTTP Helpers ────────────────────────────────────────────────────────
 
 class TestGet:
-    @patch("screenmind_sdk.urllib.request.urlopen")
+    @patch("screenmind.screenmind_sdk.urllib.request.urlopen")
     def test_success(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.read.return_value = json.dumps({"status": "ok"}).encode()
@@ -18,14 +18,14 @@ class TestGet:
         result = sdk._get("/api/status")
         assert result["status"] == "ok"
 
-    @patch("screenmind_sdk.urllib.request.urlopen")
+    @patch("screenmind.screenmind_sdk.urllib.request.urlopen")
     def test_url_error(self, mock_urlopen):
         import urllib.error
         mock_urlopen.side_effect = urllib.error.URLError("refused")
         result = sdk._get("/api/status")
         assert result == {}
 
-    @patch("screenmind_sdk.urllib.request.urlopen")
+    @patch("screenmind.screenmind_sdk.urllib.request.urlopen")
     def test_invalid_json(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.read.return_value = b"not json"
@@ -38,7 +38,7 @@ class TestGet:
 
 
 class TestPost:
-    @patch("screenmind_sdk.urllib.request.urlopen")
+    @patch("screenmind.screenmind_sdk.urllib.request.urlopen")
     def test_success(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.read.return_value = json.dumps({"captured": True}).encode()
@@ -49,7 +49,7 @@ class TestPost:
         result = sdk._post("/api/capture", {"force": True})
         assert result["captured"] is True
 
-    @patch("screenmind_sdk.urllib.request.urlopen")
+    @patch("screenmind.screenmind_sdk.urllib.request.urlopen")
     def test_post_error(self, mock_urlopen):
         import urllib.error
         mock_urlopen.side_effect = urllib.error.URLError("refused")
@@ -96,7 +96,7 @@ class TestAgentContext:
 # ── State Persistence ───────────────────────────────────────────────────
 
 class TestState:
-    @patch("screenmind_sdk.Path.home")
+    @patch("screenmind.screenmind_sdk.Path.home")
     def test_save_and_load(self, mock_home, tmp_path):
         mock_home.return_value = tmp_path
         sdk._set_current_agent("state-test")
@@ -105,13 +105,13 @@ class TestState:
         value = sdk.load_state("counter", agent_name="state-test")
         assert value == 42
 
-    @patch("screenmind_sdk.Path.home")
+    @patch("screenmind.screenmind_sdk.Path.home")
     def test_load_default(self, mock_home, tmp_path):
         mock_home.return_value = tmp_path
         value = sdk.load_state("nonexistent", default="fallback", agent_name="test")
         assert value == "fallback"
 
-    @patch("screenmind_sdk.Path.home")
+    @patch("screenmind.screenmind_sdk.Path.home")
     def test_clear_state(self, mock_home, tmp_path):
         mock_home.return_value = tmp_path
         sdk.save_state("key", "value", agent_name="clear-test")
@@ -123,31 +123,31 @@ class TestState:
 # ── Data Access Functions ───────────────────────────────────────────────
 
 class TestDataAccess:
-    @patch("screenmind_sdk._get")
+    @patch("screenmind.screenmind_sdk._get")
     def test_get_recent_activity(self, mock_get):
         mock_get.return_value = {"activities": [{"id": 1}]}
         result = sdk.get_recent_activity(minutes=30)
         assert len(result) == 1
 
-    @patch("screenmind_sdk._get")
+    @patch("screenmind.screenmind_sdk._get")
     def test_search(self, mock_get):
         mock_get.return_value = {"results": [{"id": 1, "summary": "test"}]}
         result = sdk.search("test query")
         assert len(result) == 1
 
-    @patch("screenmind_sdk._get")
+    @patch("screenmind.screenmind_sdk._get")
     def test_get_summary(self, mock_get):
         mock_get.return_value = {"summary": {"summary": "Productive day"}}
         result = sdk.get_summary("2026-05-20")
         assert "Productive" in result
 
-    @patch("screenmind_sdk._get")
+    @patch("screenmind.screenmind_sdk._get")
     def test_get_summary_empty(self, mock_get):
         mock_get.return_value = {"summary": {}}
         result = sdk.get_summary()
         assert result == ""
 
-    @patch("screenmind_sdk._post")
+    @patch("screenmind.screenmind_sdk._post")
     def test_capture_now(self, mock_post):
         mock_post.return_value = {"status": "captured"}
         result = sdk.capture_now()
@@ -157,14 +157,14 @@ class TestDataAccess:
 # ── write_file ──────────────────────────────────────────────────────────
 
 class TestWriteFile:
-    @patch("config.settings")
+    @patch("screenmind.config.settings")
     def test_write_within_data_dir(self, mock_settings, tmp_path):
         mock_settings.data_path = tmp_path
         target = tmp_path / "output" / "test.txt"
         sdk.write_file(str(target), "hello world")
         assert target.read_text() == "hello world"
 
-    @patch("config.settings")
+    @patch("screenmind.config.settings")
     def test_write_outside_data_dir_blocked(self, mock_settings, tmp_path):
         mock_settings.data_path = tmp_path / "safe"
         (tmp_path / "safe").mkdir()

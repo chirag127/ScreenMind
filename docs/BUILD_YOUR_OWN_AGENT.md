@@ -37,7 +37,7 @@ description: A custom Python plugin
 enabled: true
 output: local
 """
-from screenmind_sdk import get_recent_activity, save_state, load_state
+from screenmind.screenmind_sdk import get_recent_activity, save_state, load_state
 
 def run(context):
     # context["agent_name"] — your agent's sanitized name
@@ -93,7 +93,7 @@ The data budget scales with your model's context window. Smaller models get fewe
 ## SDK Reference (Python Plugins)
 
 ```python
-from screenmind_sdk import (
+from screenmind.screenmind_sdk import (
     # Data Access
     get_recent_activity,     # Recent screen activities
     get_activities_by_date,  # Activities for a specific date
@@ -198,7 +198,7 @@ schedule: every 30m
 description: Alerts when brand keywords appear on screen
 enabled: true
 """
-from screenmind_sdk import search, notify, save_state, load_state
+from screenmind.screenmind_sdk import search, notify, save_state, load_state
 
 KEYWORDS = ["ScreenMind", "ScreenPipe", "my-company"]
 
@@ -229,7 +229,7 @@ schedule: every 2h
 description: Logs research sessions with sources
 enabled: true
 """
-from screenmind_sdk import get_urls_visited, get_activities, save_state, load_state, ask_gemma
+from screenmind.screenmind_sdk import get_urls_visited, get_activities, save_state, load_state, ask_gemma
 
 def run(context):
     sessions = load_state("sessions", [])

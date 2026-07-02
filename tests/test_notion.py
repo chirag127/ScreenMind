@@ -1,18 +1,18 @@
 """Tests for integrations/notion.py — mock notion_client."""
 from unittest.mock import patch, MagicMock
-from integrations.notion import export_summary, test_connection as notion_connection_check
+from screenmind.integrations.notion import export_summary, test_connection as notion_connection_check
 
 
 # ── export_summary ──────────────────────────────────────────────────────
 
 class TestExportSummary:
     def test_missing_token(self):
-        with patch("integrations.notion.Client", create=True):
+        with patch("screenmind.integrations.notion.Client", create=True):
             result = export_summary("", "db-id", "2026-05-20", "Summary")
             assert result is False
 
     def test_missing_database_id(self):
-        with patch("integrations.notion.Client", create=True):
+        with patch("screenmind.integrations.notion.Client", create=True):
             result = export_summary("token", "", "2026-05-20", "Summary")
             assert result is False
 
@@ -22,10 +22,10 @@ class TestExportSummary:
         mock_client = MagicMock()
         mock_client_cls.return_value = mock_client
 
-        with patch("integrations.notion.Client", mock_client_cls, create=True):
+        with patch("screenmind.integrations.notion.Client", mock_client_cls, create=True):
             # Need to re-import to pick up the mock
             from importlib import reload
-            import integrations.notion as notion_mod
+            import screenmind.integrations.notion as notion_mod
             reload(notion_mod)
 
             result = notion_mod.export_summary(
@@ -42,7 +42,7 @@ class TestExportSummary:
         """When notion_client isn't installed, returns False."""
         with patch.dict("sys.modules", {"notion_client": None}):
             from importlib import reload
-            import integrations.notion as notion_mod
+            import screenmind.integrations.notion as notion_mod
             reload(notion_mod)
             result = notion_mod.export_summary("token", "db", "2026-05-20", "Summary")
             assert result is False
@@ -62,7 +62,7 @@ class TestNotionConnectionCheck:
     def test_import_error(self):
         with patch.dict("sys.modules", {"notion_client": None}):
             from importlib import reload
-            import integrations.notion as notion_mod
+            import screenmind.integrations.notion as notion_mod
             reload(notion_mod)
             result = notion_mod.test_connection("token", "db-id")
             assert result["ok"] is False

@@ -211,7 +211,7 @@ pip install -r requirements.txt
 #### 2️⃣ Run
 
 ```bash
-python main.py
+python -m screenmind
 ```
 
 #### 3️⃣ Open → **http://127.0.0.1:7777** 
@@ -352,7 +352,7 @@ Drop this file in `~/.screenmind/agents/` — it runs automatically.
 ### Python Plugin SDK
 
 ```python
-from screenmind_sdk import ScreenMindSDK
+from screenmind.screenmind_sdk import ScreenMindSDK
 
 sdk = ScreenMindSDK("my-tracker")
 
@@ -397,7 +397,7 @@ Data injection auto-scales to your model's context window.
 ScreenMind exposes your screen history to any MCP-compatible AI tool:
 
 ```bash
-python mcp_server.py  # stdio transport
+python -m screenmind.mcp_server  # stdio transport
 ```
 
 **Claude Desktop config** (`~/.claude/claude_desktop_config.json`):
@@ -532,15 +532,15 @@ recording. For full functionality, use an X11 session or a wlroots-based composi
 
 ```
 screenmind/
-├── main.py                    # Entry point — starts all services
+├── screenmind/                    # Entry point — starts all services
 ├── config.py                  # Pydantic settings (env + runtime overrides)
 ├── setup_llama.py             # Auto-detect + install llama-server
 ├── requirements.txt           # Full Python dependencies
 ├── requirements-test.txt      # Lightweight CI deps (no PyTorch)
-├── mcp_server.py              # MCP server for Claude/Cursor/VS Code
+│   ├── main.py              # MCP server for Claude/Cursor/VS Code
 ├── screenmind_sdk.py          # SDK for Python plugin agents
 │
-├── capture/                   # Screenshot capture layer
+│   ├── capture/                   # Screenshot capture layer
 │   ├── screen.py              # Capture facade (mss / Wayland backend)
 │   ├── wayland.py             # Wayland backend (grim / XDG Portal)
 │   ├── window.py              # Active window detection
@@ -548,7 +548,7 @@ screenmind/
 │   ├── hotkey.py              # Global hotkeys (bookmark, pause, voice)
 │   └── voice_recorder.py      # Mic recording for voice memos
 │
-├── engine/                    # AI & intelligence layer
+│   ├── engine/                    # AI & intelligence layer
 │   ├── analyzer.py            # Gemma 4 vision analysis (dual mode)
 │   ├── llm_client.py          # llama-server client (chat, vision, audio)
 │   ├── model_manager.py       # Server lifecycle, model download/switch
@@ -559,31 +559,31 @@ screenmind/
 │   ├── a11y_extractor.py      # Accessibility API text extraction
 │   └── agent_runner.py        # Agent scheduling & execution
 │
-├── workers/                   # Background processing
+│   ├── workers/                   # Background processing
 │   ├── capture_worker.py      # Smart capture loop + privacy filtering
 │   ├── analysis_worker.py     # OCR → Gemma → Layout → Embed → Store
 │   └── audio_worker.py        # Meeting detection & transcription
 │
-├── storage/                   # Data persistence
+│   ├── storage/                   # Data persistence
 │   ├── database.py            # SQLite + FTS5 + migrations
 │   └── models.py              # Pydantic data models
 │
-├── privacy/                   # Privacy & security
+│   ├── privacy/                   # Privacy & security
 │   ├── encryption.py          # Fernet AES encryption at rest
 │   └── data_filter.py         # Sensitive data redaction
 │
-├── platform_support/          # Cross-platform abstraction
+│   ├── platform_support/          # Cross-platform abstraction
 │   ├── windows.py             # Win32 + UI Automation
 │   ├── macos.py               # AppKit + AXUIElement
 │   └── linux.py               # xdotool + AT-SPI
 │
-├── integrations/              # External connections
+│   ├── integrations/              # External connections
 │   ├── obsidian.py            # Vault markdown export
 │   ├── notion.py              # Notion API export
 │   ├── webhooks.py            # HTTP webhooks (HMAC, retry)
 │   └── smart_notify.py        # Distraction/break notifications
 │
-├── api/                       # REST API + dashboard
+│   ├── api/                       # REST API + dashboard
 │   ├── server.py              # FastAPI app + auth middleware
 │   ├── dependencies.py        # Shared state for routes
 │   ├── routes/                # 16 route modules
