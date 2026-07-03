@@ -47,6 +47,9 @@ Thumbs.db
 
 # Test cache
 .pytest_cache/
+.coverage
+coverage.xml
+tests_baseline.txt
 
 # Strategy notes (internal)
 strategy_notes/
