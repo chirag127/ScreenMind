@@ -30,10 +30,15 @@ _real_stdout = sys.stdout
 if __name__ == "__main__":
     sys.stdout = sys.stderr
 
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError:
+    print("Error: MCP server requires the 'mcp' package.", file=sys.stderr)  # noqa: T201
+    print("Install with:  pip install screenmind[mcp]", file=sys.stderr)  # noqa: T201
+    sys.exit(1)
+
 from datetime import date, datetime, timedelta
 from typing import Optional
-
-from mcp.server.fastmcp import FastMCP
 
 from screenmind.config import settings
 from screenmind.engine.embedder import Embedder

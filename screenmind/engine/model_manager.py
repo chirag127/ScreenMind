@@ -364,7 +364,16 @@ def start_server(model_key: Optional[str] = None, timeout: int = 60) -> bool:
         # Find llama-server binary: check project's llama/ folder first, then PATH
         bin_name = "llama-server.exe" if sys.platform == "win32" else "llama-server"
         llama_bin = bin_name
-        project_bin = Path(__file__).parent.parent.parent / "llama" / bin_name
+
+        # Detect dev vs pip install for llama binary location
+        import sysconfig
+        _site_packages = Path(sysconfig.get_path("purelib"))
+        _pkg_dir = Path(__file__).parent.parent  # screenmind/
+        if _pkg_dir.is_relative_to(_site_packages):
+            project_bin = Path.home() / ".screenmind" / "llama" / bin_name
+        else:
+            project_bin = _pkg_dir.parent / "llama" / bin_name
+
         if project_bin.exists():
             llama_bin = str(project_bin)
 

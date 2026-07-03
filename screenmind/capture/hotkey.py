@@ -14,8 +14,21 @@ from typing import Callable, Optional
 
 # Conditional import: on macOS, `import keyboard` itself installs a low-level
 # event tap that triggers an Input Monitoring permission prompt — skip entirely.
+# On Linux, keyboard requires root — degrade gracefully with a warning.
+keyboard = None
 if sys.platform != "darwin":
-    import keyboard
+    try:
+        import keyboard
+    except Exception as e:
+        keyboard = None
+        logger.warning("=" * 60)
+        logger.warning("KEYBOARD NOT AVAILABLE: %s", e)
+        logger.warning("Hotkey shortcuts (bookmark/pause/voice) won't work.")
+        if sys.platform == "linux":
+            logger.warning("On Linux, keyboard requires root or input group access.")
+            logger.warning("Fix: sudo usermod -aG input $USER  (then reboot)")
+        logger.warning("Restart ScreenMind after fixing to enable hotkeys.")
+        logger.warning("=" * 60)
 
 from screenmind.config import settings
 
@@ -52,6 +65,10 @@ class HotkeyListener:
     def start(self):
         """Register global hotkeys."""
         if self._running:
+            return
+
+        if keyboard is None:
+            logger.warning("Hotkeys disabled — keyboard module not available. Use the dashboard.")
             return
 
         if sys.platform == "darwin":

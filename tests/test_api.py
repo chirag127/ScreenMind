@@ -18,7 +18,11 @@ def client():
     db.get_rewind_data.return_value = []
 
     app = create_app(database=db, capture_worker=MagicMock(), analysis_worker=MagicMock(), audio_worker=MagicMock())
-    return TestClient(app)
+
+    # Bypass PIN lock middleware — tests shouldn't need auth
+    with patch("screenmind.api.server.settings") as mock_settings:
+        mock_settings.dashboard_pin_hash = None
+        yield TestClient(app)
 
 
 def test_root_returns_html(client):

@@ -81,6 +81,43 @@ async def main():
     print("=" * 60, file=sys.stderr)  # noqa: T201
     print(file=sys.stderr)  # noqa: T201
 
+    # ── AI dependency check (first-run only) ──────────────────────────
+    _missing_ai = []
+    try:
+        import sentence_transformers  # noqa: F401
+    except ImportError:
+        _missing_ai.append("sentence-transformers>=3.3,<4.0")
+    try:
+        import easyocr  # noqa: F401
+    except ImportError:
+        _missing_ai.append("easyocr>=1.7.2,<2.0")
+
+    if _missing_ai:
+        print("=" * 60, file=sys.stderr)  # noqa: T201
+        print("  ScreenMind requires AI packages for screen analysis.", file=sys.stderr)  # noqa: T201
+        print("  This is a one-time download of ~2.5 GB (PyTorch + AI models).", file=sys.stderr)  # noqa: T201
+        print("=" * 60, file=sys.stderr)  # noqa: T201
+        print(file=sys.stderr)  # noqa: T201
+        answer = input("  Install now? [Y/n]: ").strip().lower()
+        if answer in ("", "y", "yes"):
+            import subprocess
+            print(file=sys.stderr)  # noqa: T201
+            for pkg in _missing_ai:
+                name = pkg.split(">=")[0]
+                print(f"  Installing {name}...", file=sys.stderr)  # noqa: T201
+                subprocess.check_call(
+                    [sys.executable, "-m", "pip", "install", pkg],
+                    stdout=sys.stderr,
+                )
+            print(file=sys.stderr)  # noqa: T201
+            print("  AI packages installed successfully!", file=sys.stderr)  # noqa: T201
+            print(file=sys.stderr)  # noqa: T201
+        else:
+            print(file=sys.stderr)  # noqa: T201
+            print("  ScreenMind requires these packages for screen analysis. Cannot start.", file=sys.stderr)  # noqa: T201
+            print(f"  Install manually:  pip install {' '.join(_missing_ai)}", file=sys.stderr)  # noqa: T201
+            sys.exit(1)
+
     # ── First-run experience ─────────────────────────────────────────
     settings.ensure_dirs()
     print_first_run_help()
@@ -350,6 +387,20 @@ async def main():
 
 def run():
     """Sync entry point for CLI: `screenmind` command."""
+    if "--version" in sys.argv:
+        from screenmind import __version__
+        print(f"screenmind {__version__}")  # noqa: T201
+        return
+    if "--help" in sys.argv or "-h" in sys.argv:
+        from screenmind import __version__
+        print(f"ScreenMind {__version__} -- Privacy-First AI Screen Activity Journal")  # noqa: T201
+        print()  # noqa: T201
+        print("Usage: screenmind [OPTIONS]")  # noqa: T201
+        print()  # noqa: T201
+        print("Options:")  # noqa: T201
+        print("  --version    Show version and exit")  # noqa: T201
+        print("  --help, -h   Show this help and exit")  # noqa: T201
+        return
     asyncio.run(main())
 
 

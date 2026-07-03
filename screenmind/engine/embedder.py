@@ -28,7 +28,7 @@ class Embedder:
             try:
                 from sentence_transformers import SentenceTransformer
 
-                logger.info(f"Loading model: {self._model_name}...")
+                logger.info(f"Loading embedding model: {self._model_name} (~90MB, first-time download)...")
                 self._model = SentenceTransformer(self._model_name)
                 self._initialized = True
                 logger.info(f"Model loaded. Dimensions: {self._model.get_sentence_embedding_dimension()}")

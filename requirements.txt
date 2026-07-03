@@ -13,28 +13,29 @@ imagehash==4.3.1
 # Hotkey
 keyboard==0.13.5
 
-# AI / ML
+# HTTP client
 httpx==0.28.1
-sentence-transformers==3.3.1
+
+# Numerical
 numpy==2.2.2
-easyocr==1.7.2
-uiautomation==2.0.18 ; sys_platform == "win32"  # Windows Accessibility API for accurate text extraction
 
 # Git Integration
 gitpython==3.1.44
 
-# System Tray
-pystray==0.19.5
-
-# Utilities
-aiofiles==24.1.0
-
 # Audio / Meeting Transcription
 sounddevice==0.5.5
 
-# MCP (Model Context Protocol) — exposes screen history to Claude Desktop, Cursor, VS Code
-mcp[cli]==1.26.0
-
-# Encryption at Rest (optional — only needed if ENCRYPTION_ENABLED=true)
+# Encryption
 cryptography==46.0.7
-keyring>=25.0  # OS keyring for encryption key storage
+keyring>=25.0
+
+# ── Optional: AI (install with `pip install screenmind[ai]`) ──
+# These pull PyTorch (~2.5 GB). Prompted on first run if missing.
+sentence-transformers==3.3.1
+easyocr==1.7.2
+
+# ── Optional: Windows Accessibility ──
+uiautomation==2.0.18 ; sys_platform == "win32"
+
+# ── Optional: MCP Server ──
+mcp[cli]==1.26.0

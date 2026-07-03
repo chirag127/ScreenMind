@@ -20,6 +20,7 @@ import sys
 import tarfile
 import tempfile
 import zipfile
+import sysconfig
 from pathlib import Path
 from urllib.request import urlopen, Request
 from urllib.error import URLError
@@ -27,7 +28,18 @@ from urllib.error import URLError
 # ── Constants ────────────────────────────────────────────────────────────────
 
 GITHUB_API_LATEST = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
-PROJECT_ROOT = Path(__file__).parent.parent
+
+# Detect dev mode vs pip install: if package is inside site-packages, use user data dir
+_site_packages = Path(sysconfig.get_path("purelib"))
+_pkg_dir = Path(__file__).parent  # screenmind/
+
+if _pkg_dir.is_relative_to(_site_packages):
+    # pip install mode: use ~/.screenmind/
+    PROJECT_ROOT = Path.home() / ".screenmind"
+else:
+    # Dev mode / editable install: use project root
+    PROJECT_ROOT = _pkg_dir.parent
+
 LLAMA_DIR = PROJECT_ROOT / "llama"
 
 # Binary name per platform
