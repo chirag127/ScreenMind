@@ -11,6 +11,7 @@
 
 <br>
 
+[![PyPI](https://img.shields.io/pypi/v/screenmind?style=flat-square&logo=pypi&logoColor=white&label=PyPI)](https://pypi.org/project/screenmind/)
 [![CI](https://github.com/ayushh0110/ScreenMind/actions/workflows/ci.yml/badge.svg)](https://github.com/ayushh0110/ScreenMind/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/ayushh0110/ScreenMind/graph/badge.svg)](https://codecov.io/gh/ayushh0110/ScreenMind)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
@@ -195,7 +196,33 @@ Gemma 4 E2B is the only model that checks all five boxes.
 
 > **Requirements:** Python 3.10+ · GPU recommended (4GB+ VRAM) · ~5GB disk for model
 
-#### 1️⃣ Clone & Install
+#### 1️⃣ Install
+
+```bash
+pip install screenmind
+```
+
+#### 2️⃣ Run
+
+```bash
+screenmind
+```
+
+#### 3️⃣ Open → **http://127.0.0.1:7777** 
+
+On first run, ScreenMind will:
+- Prompt to install AI packages (~2.5GB one-time download)
+- Auto-detect your GPU and download `llama-server` if not found (CUDA/CPU auto-selected)
+- Open the **Model Hub** — download Gemma 4 E2B GGUF (~5GB) with progress tracking right in the UI
+- Chat and Summary stay locked (🧠💤 *"I need my brain to think!"*) until the model is ready, then auto-unlock
+- Start `llama-server` in background
+- Show the welcome screen to set up an optional PIN
+- Create `~/.screenmind/` for data storage
+
+<details>
+<summary><b>🔧 Developer Install (from source)</b></summary>
+
+<br>
 
 ```bash
 git clone https://github.com/ayushh0110/ScreenMind.git
@@ -205,24 +232,10 @@ python -m venv venv
 venv\Scripts\activate        # Windows
 # source venv/bin/activate   # macOS/Linux
 
-pip install -r requirements.txt
+pip install -e ".[ai,dev]"
 ```
 
-#### 2️⃣ Run
-
-```bash
-python -m screenmind
-```
-
-#### 3️⃣ Open → **http://127.0.0.1:7777** 
-
-On first run, ScreenMind will:
-- Auto-detect your GPU and download `llama-server` if not found (CUDA/CPU auto-selected)
-- Open the **Model Hub** — download Gemma 4 E2B GGUF (~5GB) with progress tracking right in the UI
-- Chat and Summary stay locked (🧠💤 *"I need my brain to think!"*) until the model is ready, then auto-unlock
-- Start `llama-server` in background
-- Show the welcome screen to set up an optional PIN
-- Create `~/.screenmind/` for data storage
+</details>
 
 <details>
 <summary><b>⚙️ Optional: Configure via .env</b></summary>
