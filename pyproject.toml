@@ -35,13 +35,13 @@ dependencies = [
     # Core
     "fastapi>=0.115.6,<1.0",
     "uvicorn[standard]>=0.34.0,<1.0",
-    "pydantic>=2.11.0,<3.0.0",
-    "pydantic-settings>=2.7,<3.0",
-    "python-dotenv>=1.0,<2.0",
+    "pydantic>=2.7.0,<3.0.0",
+    "pydantic-settings>=2.0,<3.0",
+    "python-dotenv>=0.21,<2.0",
 
     # Screen Capture
     "mss>=9.0,<10.0",
-    "Pillow>=11.0,<13.0",
+    "Pillow>=10.0,<13.0",
     "imagehash>=4.3,<5.0",
 
     # Hotkey
@@ -51,7 +51,7 @@ dependencies = [
     "httpx>=0.28.0,<1.0",
 
     # Numerical
-    "numpy>=2.2.0,<3.0",
+    "numpy>=1.26,<3.0",
 
     # Git Integration
     "gitpython>=3.1,<4.0",
@@ -60,8 +60,8 @@ dependencies = [
     "sounddevice>=0.5,<1.0",
 
     # Encryption (optional but included by default)
-    "cryptography>=43.0,<50.0",
-    "keyring>=25.0",
+    "cryptography>=41.0,<50.0",
+    "keyring>=23.0",
 ]
 
 [project.optional-dependencies]

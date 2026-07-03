@@ -102,13 +102,11 @@ async def main():
         if answer in ("", "y", "yes"):
             import subprocess
             print(file=sys.stderr)  # noqa: T201
-            for pkg in _missing_ai:
-                name = pkg.split(">=")[0]
-                print(f"  Installing {name}...", file=sys.stderr)  # noqa: T201
-                subprocess.check_call(
-                    [sys.executable, "-m", "pip", "install", pkg],
-                    stdout=sys.stderr,
-                )
+            print("  Installing AI packages (this may take a few minutes)...", file=sys.stderr)  # noqa: T201
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install"] + _missing_ai,
+                stdout=sys.stderr,
+            )
             print(file=sys.stderr)  # noqa: T201
             print("  AI packages installed successfully!", file=sys.stderr)  # noqa: T201
             print(file=sys.stderr)  # noqa: T201
