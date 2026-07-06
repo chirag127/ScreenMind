@@ -145,7 +145,7 @@ def notify(title: str, message: str, color: str = "#8b5cf6"):
 
 def capture_now() -> dict:
     """Trigger an immediate screenshot capture."""
-    return _post("/api/capture")
+    return _post("/api/capture/bookmark")
 
 
 def write_file(path: str, content: str):

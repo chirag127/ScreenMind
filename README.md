@@ -472,7 +472,7 @@ All settings configurable via `.env`, environment variables, or the **Settings**
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CAPTURE_INTERVAL` | `40` | Seconds between captures |
-| `ANALYSIS_MODE` | `merged` | `merged` (accurate, ~76s) or `fast` (~12s) |
+| `ANALYSIS_MODE` | `fast` | `fast` (~12s), `balanced` (~40s), or `merged` (~76s, accurate) |
 | `PERFORMANCE_MODE` | `balanced` | GPU layers: `minimal` / `balanced` / `maximum` |
 | `BLOCKED_APPS` | *(empty)* | Comma-separated apps to never capture |
 | `MEETING_TRANSCRIPTION` | `false` | Auto-transcribe when meeting apps detected |

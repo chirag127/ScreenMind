@@ -49,7 +49,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 def create_app(database: Database, capture_worker=None, analysis_worker=None, embedder=None, audio_worker=None):
     """Create and configure the FastAPI application."""
 
-    app = FastAPI(title="ScreenMind", version="0.1.0")
+    app = FastAPI(title="ScreenMind", version="0.1.1")
 
     # Add auth middleware
     app.add_middleware(AuthMiddleware)

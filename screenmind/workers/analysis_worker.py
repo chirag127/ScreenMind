@@ -9,9 +9,9 @@ Two analysis modes (configurable via settings.analysis_mode):
   - "fast": No-thinking LLM call for analysis (~12s) + instant OCR-based
     layout clustering. 6x faster, no LLM needed for layout.
 
-Per-app pHash cache avoids redundant Gemma calls for similar screens:
-  - identical (diff <= 2): reuse everything
-  - minor (diff 3-7): reuse layout, re-run fast analysis
+Per-app pHash cache avoids redundant processing for similar screens:
+  - identical (diff <= 2): skip OCR + Gemma, reuse everything from cache
+  - minor (diff 3-7): reuse layout + Gemma analysis, re-run OCR
   - full (diff > 7): run full pipeline
 """
 
@@ -250,15 +250,58 @@ class AnalysisWorker:
             activity_id = self._db.insert_activity(entry)
 
         try:
-            # 2. Text extraction: Use pre-captured a11y text + OCR fallback
+            logger.info(f"Processing #{activity_id} ({capture.app_name or 'unknown'})...")
+
+            # 2. Per-app cache check — skip OCR + Gemma for identical screens
+            #    Compare pHash against last analyzed frame for same (app, title).
+            cache_key = (capture.app_name or "unknown", (capture.window_title or "")[:100])
+            cached = self._app_cache.get(cache_key)
+            tier = "full"  # default: full Gemma call
+
+            if cached and capture.phash and not capture.bookmarked:
+                phash_diff = capture.phash - cached["phash"]
+                cache_age = time.time() - cached["timestamp"]
+
+                # Communication apps change content faster — shorter stale window
+                _app_lower = (capture.app_name or "").lower()
+                _is_comms = any(c in _app_lower for c in ("discord", "slack", "teams", "whatsapp", "telegram", "gmail", "outlook", "mail"))
+                stale_limit = 240 if _is_comms else 420  # 4min comms, 7min others
+
+                if phash_diff <= 3:
+                    tier = "identical"
+                elif phash_diff <= 10 and cache_age < stale_limit:
+                    tier = "minor"
+                # else: 11+ or stale -> full pipeline
+
+            # --- Tier "identical": copy everything from cache, skip OCR entirely ---
+            if tier == "identical":
+                active_url = cached.get("active_url")
+                method_label = "backfill:cache:identical" if self._is_backfill else "cache:identical"
+                self._db.update_activity_analysis(
+                    activity_id=activity_id,
+                    analysis=cached["analysis"],
+                    embedding=cached.get("embedding"),
+                    ocr_text=cached.get("ocr_text"),
+                    ocr_boxes=cached.get("ocr_boxes_json"),
+                    organized_text=cached.get("organized_text"),
+                    analysis_method=method_label,
+                    active_url=active_url,
+                )
+                self._cache_hits += 1
+                elapsed = time.time() - start
+                self._processed += 1
+                logger.info(f"#{self._processed} in {elapsed:.1f}s: "
+                      f"{cached['analysis'].app_name} ({cached['analysis'].activity_category}) "
+                      f"[cache: identical]")
+                return
+
+            # 3. Text extraction (only for minor/full tiers)
             ocr_text = None
             ocr_boxes = None
             ocr_boxes_json = None
             text_method = "none"
 
-            logger.info(f"Processing #{activity_id} ({capture.app_name or 'unknown'})...")
-
-            # 2a. Use a11y text captured at screenshot time (correct window)
+            # 3a. Use a11y text captured at screenshot time (correct window)
             a11y_text = capture.a11y_text
 
             # Detect if a11y text is just window chrome (buttons, menus, tabs)
@@ -286,7 +329,7 @@ class AnalysisWorker:
                 # A11y got some text but it's chrome — keep for metadata, will use OCR as primary
                 text_method = "a11y"
 
-            # 2b. OCR — runs when a11y text is chrome-only or insufficient
+            # 3b. OCR — runs when a11y text is chrome-only or insufficient
             needs_ocr = not a11y_is_content or text_method == "none"
             if needs_ocr and self._ocr.is_available:
                 ocr_raw, ocr_boxes = await asyncio.get_event_loop().run_in_executor(
@@ -318,7 +361,7 @@ class AnalysisWorker:
                             ocr_text = ocr_raw
                             text_method = "ocr"
 
-            # 2c. Sensitive data filter — redact before AI + storage
+            # 3c. Sensitive data filter — redact before AI + storage
             if settings.sensitive_filter_enabled and ocr_text:
                 try:
                     from screenmind.privacy.data_filter import filter_sensitive_text, parse_enabled_types
@@ -328,51 +371,9 @@ class AnalysisWorker:
                 except Exception as e:
                     logger.warning(f"Sensitive filter error: {e}")
 
-            # 2d. Extract URLs from text (for Gemma hint + DB storage)
+            # 3d. Extract URLs from text (for Gemma hint + DB storage)
             found_urls = _extract_all_urls(ocr_text)
             active_url = found_urls[0] if found_urls else None
-
-            # 3. Per-app cache check — skip Gemma for identical/similar screens
-            #    Compare pHash against last analyzed frame for same (app, title).
-            cache_key = (capture.app_name or "unknown", (capture.window_title or "")[:100])
-            cached = self._app_cache.get(cache_key)
-            tier = "full"  # default: full Gemma call
-
-            if cached and capture.phash and not capture.bookmarked:
-                phash_diff = capture.phash - cached["phash"]
-                cache_age = time.time() - cached["timestamp"]
-
-                # Communication apps change content faster — shorter stale window
-                _app_lower = (capture.app_name or "").lower()
-                _is_comms = any(c in _app_lower for c in ("discord", "slack", "teams", "whatsapp", "telegram", "gmail", "outlook", "mail"))
-                stale_limit = 240 if _is_comms else 420  # 4min comms, 7min others
-
-                if phash_diff <= 3:
-                    tier = "identical"
-                elif phash_diff <= 10 and cache_age < stale_limit:
-                    tier = "minor"
-                # else: 11+ or stale -> full pipeline
-
-            # --- Tier "identical": copy everything from cache, return immediately ---
-            if tier == "identical":
-                method_label = "backfill:cache:identical" if self._is_backfill else "cache:identical"
-                self._db.update_activity_analysis(
-                    activity_id=activity_id,
-                    analysis=cached["analysis"],
-                    embedding=cached.get("embedding"),
-                    ocr_text=cached.get("ocr_text"),
-                    ocr_boxes=cached.get("ocr_boxes_json"),
-                    organized_text=cached.get("organized_text"),
-                    analysis_method=method_label,
-                    active_url=active_url,
-                )
-                self._cache_hits += 1
-                elapsed = time.time() - start
-                self._processed += 1
-                logger.info(f"#{self._processed} in {elapsed:.1f}s: "
-                      f"{cached['analysis'].app_name} ({cached['analysis'].activity_category}) "
-                      f"[cache: identical]")
-                return
 
             # --- Tier "minor": run OCR (already done above), reuse Gemma + layout ---
             if tier == "minor":
@@ -550,6 +551,7 @@ class AnalysisWorker:
                     "ocr_boxes_json": ocr_boxes_json,
                     "organized_text": organized_text,
                     "embedding": embedding,
+                    "active_url": active_url,
                     "timestamp": cached["timestamp"] if tier == "minor" else time.time(),
                 }
                 # LRU eviction

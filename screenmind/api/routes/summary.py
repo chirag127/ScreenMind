@@ -2,6 +2,8 @@
 
 import logging
 import asyncio
+from collections import Counter
+from datetime import datetime as dt
 
 from fastapi import APIRouter, Query
 
@@ -11,6 +13,63 @@ from screenmind.api.dependencies import db
 logger = logging.getLogger("screenmind.api.routes.summary")
 
 router = APIRouter(prefix="/api", tags=["summary"])
+
+
+# Categories that count as focused/productive work time.
+# Browsing and communication are excluded — they can be doomscrolling/chat.
+_PRODUCTIVE_CATEGORIES = {"coding", "writing", "terminal", "design", "meeting"}
+
+
+def _compute_day_metrics(activities: list) -> dict:
+    """Compute productive_hours, category_breakdown, and top_repos from activities.
+
+    Uses actual timestamps with per-gap capping for accuracy instead of
+    count × capture_interval which overcounts rapid-fire frames and
+    undercounts long static work sessions.
+    """
+    analyzed = [a for a in activities if a.get("analyzed")]
+    if not analyzed:
+        return {"productive_hours": 0.0, "category_breakdown": {}, "top_repos": []}
+
+    # Category breakdown
+    category_counts = Counter(
+        (a.get("category") or "other") for a in analyzed
+    )
+
+    # Productive hours from timestamps — sort chronologically, sum capped deltas
+    max_gap = 2 * settings.capture_interval  # Cap per gap (e.g. 80s at default 40s)
+    productive_seconds = 0.0
+    productive_entries = sorted(
+        [a for a in analyzed if (a.get("category") or "other").lower() in _PRODUCTIVE_CATEGORIES],
+        key=lambda a: a.get("timestamp", ""),
+    )
+    for i, a in enumerate(productive_entries):
+        if i == 0:
+            # First entry: count one interval
+            productive_seconds += settings.capture_interval
+            continue
+        try:
+            prev_ts = dt.fromisoformat(productive_entries[i - 1]["timestamp"])
+            curr_ts = dt.fromisoformat(a["timestamp"])
+            delta = (curr_ts - prev_ts).total_seconds()
+            productive_seconds += min(delta, max_gap)
+        except (ValueError, KeyError, TypeError):
+            productive_seconds += settings.capture_interval
+
+    productive_hours = round(productive_seconds / 3600, 2)
+
+    # Top repos from dev_context JOIN
+    repo_counts = Counter(
+        a["repo_name"] for a in analyzed
+        if a.get("repo_name")
+    )
+    top_repos = [repo for repo, _ in repo_counts.most_common(5)]
+
+    return {
+        "productive_hours": productive_hours,
+        "category_breakdown": dict(category_counts),
+        "top_repos": top_repos,
+    }
 
 
 @router.get("/summary")
@@ -85,10 +144,16 @@ Write the summary:"""
     except Exception as e:
         summary_text = f"Summary generation failed: {e}"
 
+    # Compute day metrics (productive hours, categories, top repos)
+    metrics = _compute_day_metrics(activities)
+
     summary_obj = DailySummary(
         date=target,
         summary=summary_text,
         total_activities=len(activities),
+        category_breakdown=metrics["category_breakdown"],
+        productive_hours=metrics["productive_hours"],
+        top_repos=metrics["top_repos"],
     )
     db.upsert_daily_summary(summary_obj)
 
@@ -162,12 +227,18 @@ Activities:
     except Exception as e:
         standup = f"Standup generation failed: {e}"
 
-    # Save standup to DB alongside summary
+    # Save standup to DB alongside summary — include metrics so we don't
+    # clobber values computed by generate_summary (upsert is unconditional
+    # on numeric/JSON columns).
     from screenmind.storage.models import DailySummary
+    metrics = _compute_day_metrics(activities)
     standup_summary = DailySummary(
         date=target,
         summary="",  # Don't overwrite existing summary
         total_activities=len(activities),
+        category_breakdown=metrics["category_breakdown"],
+        productive_hours=metrics["productive_hours"],
+        top_repos=metrics["top_repos"],
     )
     db.upsert_daily_summary(standup_summary, standup=standup)
 

@@ -12,6 +12,12 @@ import sys
 import threading
 from typing import Callable, Optional
 
+# Import config first — triggers _setup_logging() so warnings below
+# are properly formatted and captured by log handlers/file sinks.
+from screenmind.config import settings
+
+logger = logging.getLogger("screenmind.capture.hotkey")
+
 # Conditional import: on macOS, `import keyboard` itself installs a low-level
 # event tap that triggers an Input Monitoring permission prompt — skip entirely.
 # On Linux, keyboard requires root — degrade gracefully with a warning.
@@ -29,10 +35,6 @@ if sys.platform != "darwin":
             logger.warning("Fix: sudo usermod -aG input $USER  (then reboot)")
         logger.warning("Restart ScreenMind after fixing to enable hotkeys.")
         logger.warning("=" * 60)
-
-from screenmind.config import settings
-
-logger = logging.getLogger("screenmind.capture.hotkey")
 
 
 class HotkeyListener:

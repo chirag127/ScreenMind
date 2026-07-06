@@ -3,7 +3,6 @@ Shared state and helpers for API route modules.
 All route files import from here instead of accessing globals.
 """
 
-import hashlib
 import secrets
 from datetime import datetime, timedelta
 from typing import Optional
@@ -48,14 +47,6 @@ analysis_worker = None
 audio_worker = None
 
 
-# ── Model list ───────────────────────────────────────────────────────
-GEMMA_MODELS = [
-    {"tag": "gemma3:1b",   "name": "Gemma 3 1B",   "size": "1B",  "vram": "~1 GB",  "quality": "Basic",    "tier": 0},
-    {"tag": "gemma4:e2b",  "name": "Gemma 4 E2B",  "size": "2B",  "vram": "~2 GB",  "quality": "Good",     "tier": 1},
-    {"tag": "gemma4:e4b",  "name": "Gemma 4 E4B",  "size": "4B",  "vram": "~3 GB",  "quality": "Great",    "tier": 2},
-    {"tag": "gemma4:12b",  "name": "Gemma 4 12B",  "size": "12B", "vram": "~8 GB",  "quality": "Excellent", "tier": 3},
-    {"tag": "gemma4:27b",  "name": "Gemma 4 27B",  "size": "27B", "vram": "~18 GB", "quality": "Best",     "tier": 4},
-]
 
 
 def init(database: Database, emb: Optional[Embedder], cap_worker, ana_worker, aud_worker):
