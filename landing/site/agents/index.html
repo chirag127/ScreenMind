@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agents — ScreenMind</title>
+<meta name="description" content="Build automations on your screen data with plain-English Markdown agents or Python plugins that run on a schedule — powered by your local model." />
+<link rel="canonical" href="https://screenmind.app/agents/" />
+<meta name="theme-color" content="#05060d" />
+<link rel="icon" href="/favicon.ico" />
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="ScreenMind" />
+<meta property="og:title" content="Agents — ScreenMind" />
+<meta property="og:description" content="Build automations on your screen data with plain-English Markdown agents or Python plugins that run on a schedule — powered by your local model." />
+<meta property="og:url" content="https://screenmind.app/agents/" />
+<meta property="og:image" content="https://screenmind.app/assets/og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Agents — ScreenMind" />
+<meta name="twitter:description" content="Build automations on your screen data with plain-English Markdown agents or Python plugins that run on a schedule — powered by your local model." />
+<meta name="twitter:image" content="https://screenmind.app/assets/og.png" />
+<link rel="stylesheet" href="/style.css" />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Agents","description":"Build automations on your screen data with plain-English Markdown agents or Python plugins that run on a schedule — powered by your local model.","url":"https://screenmind.app/agents/","isPartOf":{"@type":"WebSite","name":"ScreenMind","url":"https://screenmind.app/"},"publisher":{"@type":"Organization","name":"ScreenMind"}}</script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
+}}
+</script>
+</head>
+<body class="is-doc">
+  <nav class="topnav">
+    <a class="brand" href="/" data-home><img class="logo" src="/assets/logo.png" alt="ScreenMind" />Screen<span>Mind</span></a>
+    <div class="navlinks">
+      <a href="/features/" data-doc="features">Overview</a>
+      <a href="/install/" data-doc="install">Docs</a>
+      <a href="/how-it-works/" data-doc="how-it-works">Under the hood</a>
+      <a class="cta" href="https://github.com/ayushh0110/ScreenMind" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+  </nav>
+  <select id="docsel" class="docsel" aria-label="Jump to a docs page"><optgroup label="Overview"><option value="features">What's inside</option></optgroup><optgroup label="Docs"><option value="install">Install & run</option><option value="chat-search">Chat & Search</option><option value="voice-meetings">Voice & meetings</option><option value="agents" selected>Agents</option><option value="mcp">MCP server</option><option value="privacy">Nothing leaves</option></optgroup><optgroup label="Deep dive"><option value="how-it-works">Under the hood</option></optgroup></select>
+  <div id="flash"></div>
+  <div id="strand"></div>
+  <main class="stage">
+    <section class="panel" data-a="0.00" data-b="0.16"><div class="tag">A mind of its own</div><h1 class="lumin">Your screen,<br>remembered.</h1><p>Thousands of screen-moments, connected like neurons — running entirely on your machine.</p><span class="pill copyable" data-copy="pip install screenmind" role="button" tabindex="0" title="Click to copy"><span class="pilltext">pip install screenmind</span><svg class="copyico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></span><div class="hstat"><b>1,500+</b> downloads · <b>MIT</b> · runs on <b>4&nbsp;GB</b> VRAM</div></section>
+    <section class="panel" data-a="0.22" data-b="0.46"><div class="tag">Understand</div><h2 class="lumin">Every synapse<br>is a moment.</h2><p>One local model reads every frame — apps, text, mood, layout — and remembers what it means.</p><a class="learn" href="/how-it-works/" data-doc="how-it-works">Learn how it works ↯</a></section>
+    <section class="panel" data-a="0.50" data-b="0.72"><div class="tag">Automate</div><h2 class="lumin">Agents that live<br>in your memory.</h2><p>Drop a Markdown file and it runs on your screen history — no code needed.</p><a class="learn" href="/agents/" data-doc="agents">Build an agent ↯</a></section>
+    <section class="panel" data-a="0.76" data-b="1.01"><div class="tag">Private</div><h2 class="lumin">All in your<br>head. Literally.</h2><p>Zero cloud. Zero telemetry. Your mind stays yours.</p><a class="learn" href="/privacy/" data-doc="privacy">See how it stays private ↯</a></section>
+  </main>
+  <div id="doc"><aside id="docnav"><div class="grp">Overview</div><a href="/features/" data-nav="features">What's inside</a><div class="grp">Docs</div><a href="/install/" data-nav="install">Install & run</a><a href="/chat-search/" data-nav="chat-search">Chat & Search</a><a href="/voice-meetings/" data-nav="voice-meetings">Voice & meetings</a><a href="/agents/" data-nav="agents" class="active">Agents</a><a href="/mcp/" data-nav="mcp">MCP server</a><a href="/privacy/" data-nav="privacy">Nothing leaves</a><div class="grp">Deep dive</div><a href="/how-it-works/" data-nav="how-it-works">Under the hood</a></aside><article class="article" id="article"><div class="tag">Docs</div><h1 class="lumin">Agents</h1><p>Build automations on top of your screen data — no server, no glue code. Drop a file in <code>~/.screenmind/agents/</code> and it runs on a schedule: Markdown for AI-powered analysis, Python for full control.</p><h2>Markdown agents</h2><p>Front-matter declares how it runs; the body is your prompt. Gemma runs it with the requested screen data injected automatically.</p><div class="code">---<br>name: Standup Report<br>schedule: daily<br>description: Daily standup from my screen activity<br>enabled: true<br>output: local, obsidian<br>data: apps, timeline<br>---<br>Generate a standup with three sections — what I did,<br>what I'm doing today, and any blockers. Be concise.</div><h3>Frontmatter</h3><ul><li><code>schedule</code> — <code>every 30m</code>, <code>every 1h</code>, <code>every 2h</code>, <code>every 6h</code>, or <code>daily</code></li><li><code>output</code> — <code>local</code>, <code>obsidian</code>, <code>webhook</code> (comma-separate for several)</li><li><code>enabled</code> — whether it runs on schedule</li><li><code>data</code> — which screen data to inject (Markdown agents only)</li><li><code>model_requirement</code> — minimum context tokens the agent needs (optional)</li></ul><h3>Data sections</h3><ul><li><code>timeline</code> — recent activities with timestamps, apps, summaries</li><li><code>apps</code> — app usage counts + category breakdown</li><li><code>urls</code> — URLs visited (from browser address bars)</li><li><code>meetings</code> — meeting summaries and durations</li><li><code>mood</code> — mood/sentiment from screen analysis</li></ul><h2>Python plugins</h2><p>For state, filtering, or LLM calls, write a <code>.py</code> agent with a <code>run(context)</code> function and import from the SDK.</p><div class="code">from screenmind.screenmind_sdk import get_urls_visited, save_state, load_state, ask_gemma<br><br>def run(context):<br>    urls = get_urls_visited()<br>    last = load_state("count", 0)<br>    save_state("count", last + len(urls))<br>    return ask_gemma(f"Summarize these URLs: {urls}")</div><h3>SDK</h3><ul><li><b>Data</b> — <code>get_recent_activity</code>, <code>get_activities</code>, <code>get_urls_visited</code>, <code>get_meetings</code>, <code>get_app_usage</code>, <code>search</code>, <code>get_summary</code>, <code>get_stats</code></li><li><b>State</b> — <code>save_state</code>, <code>load_state</code>, <code>clear_state</code> (per-agent JSON, persists across runs)</li><li><b>AI</b> — <code>ask_gemma</code> (GPU-safe: waits for the GPU to be idle, never interrupts capture)</li><li><b>Actions</b> — <code>notify</code>, <code>capture_now</code>, <code>write_file</code>, <code>get_output_dir</code></li></ul><p>Outputs route to <code>local</code>, your <code>obsidian</code> vault, or a <code>webhook</code> — mix and match.</p><div class="callout">Fun fact: the four built-in agents (daily journal, focus report, meeting actions, code changelog) are just Markdown files in <code>~/.screenmind/agents/</code> — open one and edit it live.</div><div class="docmore"><div class="grp">Explore more</div><a href="/features/" data-nav="features">What's inside</a><a href="/install/" data-nav="install">Install & run</a><a href="/chat-search/" data-nav="chat-search">Chat & Search</a><a href="/voice-meetings/" data-nav="voice-meetings">Voice & meetings</a><a href="/mcp/" data-nav="mcp">MCP server</a><a href="/privacy/" data-nav="privacy">Nothing leaves</a><a href="/how-it-works/" data-nav="how-it-works">Under the hood</a></div><div class="docfoot"><a href="https://github.com/ayushh0110/ScreenMind" target="_blank" rel="noopener">GitHub</a><a href="https://pypi.org/project/screenmind/" target="_blank" rel="noopener">PyPI</a><a href="https://youtu.be/CxkkBT_EvPw?si=I3McH0k1vIhVxyMz" target="_blank" rel="noopener">Walkthrough</a><a href="https://github.com/ayushh0110/ScreenMind/issues/new" target="_blank" rel="noopener">Raise an issue</a><a href="https://x.com/ayushh_ss" target="_blank" rel="noopener">X</a><a href="https://www.linkedin.com/in/ayushhss/" target="_blank" rel="noopener">LinkedIn</a><a href="mailto:shekharayush5678@gmail.com">Email</a><div class="copy">ScreenMind — 100% local, MIT-licensed.</div></div><a class="jump" href="/" data-jump="__home">↯ back to the brain</a></article></div>
+  <footer class="sitefoot"><div class="cols">
+    <div><div class="grp">Overview</div><a href="/features/" data-doc="features">Overview</a></div>
+    <div><div class="grp">Docs</div><a href="/install/" data-doc="install">Install &amp; run</a><a href="/chat-search/" data-doc="chat-search">Chat &amp; Search</a><a href="/voice-meetings/" data-doc="voice-meetings">Voice &amp; meetings</a><a href="/agents/" data-doc="agents">Agents</a><a href="/mcp/" data-doc="mcp">MCP server</a><a href="/privacy/" data-doc="privacy">Nothing leaves</a></div>
+    <div><div class="grp">Deep dive</div><a href="/how-it-works/" data-doc="how-it-works">Under the hood</a></div>
+    <div><div class="grp">Project</div><a href="https://github.com/ayushh0110/ScreenMind" target="_blank" rel="noopener">GitHub ↗</a><a href="https://pypi.org/project/screenmind/" target="_blank" rel="noopener">PyPI ↗</a><a href="https://youtu.be/CxkkBT_EvPw?si=I3McH0k1vIhVxyMz" target="_blank" rel="noopener">Walkthrough ↗</a><a href="https://github.com/ayushh0110/ScreenMind/issues/new" target="_blank" rel="noopener">Raise an issue ↗</a></div>
+    <div><div class="grp">Connect</div><a href="https://x.com/ayushh_ss" target="_blank" rel="noopener">X ↗</a><a href="https://www.linkedin.com/in/ayushhss/" target="_blank" rel="noopener">LinkedIn ↗</a><a href="mailto:shekharayush5678@gmail.com">Email</a></div>
+  </div><div class="copy">ScreenMind — 100% local, MIT-licensed. Built with Gemma 4 E2B.</div></footer>
+<script src="/content.js"></script>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

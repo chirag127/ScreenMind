@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chat & Search — ScreenMind</title>
+<meta name="description" content="Search and chat with your screen history — hybrid semantic + keyword search and a conversational RAG agent, running entirely on your machine." />
+<link rel="canonical" href="https://screenmind.app/chat-search/" />
+<meta name="theme-color" content="#05060d" />
+<link rel="icon" href="/favicon.ico" />
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="ScreenMind" />
+<meta property="og:title" content="Chat &amp; Search — ScreenMind" />
+<meta property="og:description" content="Search and chat with your screen history — hybrid semantic + keyword search and a conversational RAG agent, running entirely on your machine." />
+<meta property="og:url" content="https://screenmind.app/chat-search/" />
+<meta property="og:image" content="https://screenmind.app/assets/og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Chat &amp; Search — ScreenMind" />
+<meta name="twitter:description" content="Search and chat with your screen history — hybrid semantic + keyword search and a conversational RAG agent, running entirely on your machine." />
+<meta name="twitter:image" content="https://screenmind.app/assets/og.png" />
+<link rel="stylesheet" href="/style.css" />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Chat & Search","description":"Search and chat with your screen history — hybrid semantic + keyword search and a conversational RAG agent, running entirely on your machine.","url":"https://screenmind.app/chat-search/","isPartOf":{"@type":"WebSite","name":"ScreenMind","url":"https://screenmind.app/"},"publisher":{"@type":"Organization","name":"ScreenMind"}}</script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
+}}
+</script>
+</head>
+<body class="is-doc">
+  <nav class="topnav">
+    <a class="brand" href="/" data-home><img class="logo" src="/assets/logo.png" alt="ScreenMind" />Screen<span>Mind</span></a>
+    <div class="navlinks">
+      <a href="/features/" data-doc="features">Overview</a>
+      <a href="/install/" data-doc="install">Docs</a>
+      <a href="/how-it-works/" data-doc="how-it-works">Under the hood</a>
+      <a class="cta" href="https://github.com/ayushh0110/ScreenMind" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+  </nav>
+  <select id="docsel" class="docsel" aria-label="Jump to a docs page"><optgroup label="Overview"><option value="features">What's inside</option></optgroup><optgroup label="Docs"><option value="install">Install & run</option><option value="chat-search" selected>Chat & Search</option><option value="voice-meetings">Voice & meetings</option><option value="agents">Agents</option><option value="mcp">MCP server</option><option value="privacy">Nothing leaves</option></optgroup><optgroup label="Deep dive"><option value="how-it-works">Under the hood</option></optgroup></select>
+  <div id="flash"></div>
+  <div id="strand"></div>
+  <main class="stage">
+    <section class="panel" data-a="0.00" data-b="0.16"><div class="tag">A mind of its own</div><h1 class="lumin">Your screen,<br>remembered.</h1><p>Thousands of screen-moments, connected like neurons — running entirely on your machine.</p><span class="pill copyable" data-copy="pip install screenmind" role="button" tabindex="0" title="Click to copy"><span class="pilltext">pip install screenmind</span><svg class="copyico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></span><div class="hstat"><b>1,500+</b> downloads · <b>MIT</b> · runs on <b>4&nbsp;GB</b> VRAM</div></section>
+    <section class="panel" data-a="0.22" data-b="0.46"><div class="tag">Understand</div><h2 class="lumin">Every synapse<br>is a moment.</h2><p>One local model reads every frame — apps, text, mood, layout — and remembers what it means.</p><a class="learn" href="/how-it-works/" data-doc="how-it-works">Learn how it works ↯</a></section>
+    <section class="panel" data-a="0.50" data-b="0.72"><div class="tag">Automate</div><h2 class="lumin">Agents that live<br>in your memory.</h2><p>Drop a Markdown file and it runs on your screen history — no code needed.</p><a class="learn" href="/agents/" data-doc="agents">Build an agent ↯</a></section>
+    <section class="panel" data-a="0.76" data-b="1.01"><div class="tag">Private</div><h2 class="lumin">All in your<br>head. Literally.</h2><p>Zero cloud. Zero telemetry. Your mind stays yours.</p><a class="learn" href="/privacy/" data-doc="privacy">See how it stays private ↯</a></section>
+  </main>
+  <div id="doc"><aside id="docnav"><div class="grp">Overview</div><a href="/features/" data-nav="features">What's inside</a><div class="grp">Docs</div><a href="/install/" data-nav="install">Install & run</a><a href="/chat-search/" data-nav="chat-search" class="active">Chat & Search</a><a href="/voice-meetings/" data-nav="voice-meetings">Voice & meetings</a><a href="/agents/" data-nav="agents">Agents</a><a href="/mcp/" data-nav="mcp">MCP server</a><a href="/privacy/" data-nav="privacy">Nothing leaves</a><div class="grp">Deep dive</div><a href="/how-it-works/" data-nav="how-it-works">Under the hood</a></aside><article class="article" id="article"><div class="tag">Docs</div><h1 class="lumin">Chat & Search</h1><p>Two ways to get things back out of your memory: hybrid search across the timeline, and a conversational agent that answers from your history.</p><h3>See chat in action</h3><video class="media" src="/assets/animation.mp4" autoplay muted loop playsinline preload="metadata"></video><h2>Hybrid search</h2><p>Search fuses two signals: semantic embeddings (find by meaning) and an FTS5 keyword index (find exact terms), plus meeting-transcript matches. Results are merged and re-ranked, and matching text is highlighted right on the screenshot.</p><h2>Chat with your memory</h2><p>Chat behaves like a normal assistant that can reach into your timeline when relevant:</p><div class="steps"><div class="step"><div class="sn">1</div><div class="st">Keyword probe</div><div class="sd">Keywords are pulled from your question and run through FTS5 to see if the timeline has anything relevant.</div></div><div class="step"><div class="sn">2</div><div class="st">Semantic re-rank</div><div class="sd">Candidate moments are re-scored with embeddings, plus a gentle recency boost, to pick the best context.</div></div><div class="step"><div class="sn">3</div><div class="st">Answer</div><div class="sd">The organized screen text (or the screenshot itself, as a vision fallback) is handed to Gemma to answer — with conversation history for follow-ups.</div></div></div><p>Casual chit-chat skips the timeline lookup entirely, and chat always pre-empts background analysis so answers come fast. Responses stream over SSE.</p><div class="callout">Ask things like <i>“what did Alex say on Discord earlier?”</i> or <i>“what was I working on at 3pm?”</i> — it pulls the actual moment, not a guess.</div><div class="docmore"><div class="grp">Explore more</div><a href="/features/" data-nav="features">What's inside</a><a href="/install/" data-nav="install">Install & run</a><a href="/voice-meetings/" data-nav="voice-meetings">Voice & meetings</a><a href="/agents/" data-nav="agents">Agents</a><a href="/mcp/" data-nav="mcp">MCP server</a><a href="/privacy/" data-nav="privacy">Nothing leaves</a><a href="/how-it-works/" data-nav="how-it-works">Under the hood</a></div><div class="docfoot"><a href="https://github.com/ayushh0110/ScreenMind" target="_blank" rel="noopener">GitHub</a><a href="https://pypi.org/project/screenmind/" target="_blank" rel="noopener">PyPI</a><a href="https://youtu.be/CxkkBT_EvPw?si=I3McH0k1vIhVxyMz" target="_blank" rel="noopener">Walkthrough</a><a href="https://github.com/ayushh0110/ScreenMind/issues/new" target="_blank" rel="noopener">Raise an issue</a><a href="https://x.com/ayushh_ss" target="_blank" rel="noopener">X</a><a href="https://www.linkedin.com/in/ayushhss/" target="_blank" rel="noopener">LinkedIn</a><a href="mailto:shekharayush5678@gmail.com">Email</a><div class="copy">ScreenMind — 100% local, MIT-licensed.</div></div><a class="jump" href="/" data-jump="__home">↯ back to the brain</a></article></div>
+  <footer class="sitefoot"><div class="cols">
+    <div><div class="grp">Overview</div><a href="/features/" data-doc="features">Overview</a></div>
+    <div><div class="grp">Docs</div><a href="/install/" data-doc="install">Install &amp; run</a><a href="/chat-search/" data-doc="chat-search">Chat &amp; Search</a><a href="/voice-meetings/" data-doc="voice-meetings">Voice &amp; meetings</a><a href="/agents/" data-doc="agents">Agents</a><a href="/mcp/" data-doc="mcp">MCP server</a><a href="/privacy/" data-doc="privacy">Nothing leaves</a></div>
+    <div><div class="grp">Deep dive</div><a href="/how-it-works/" data-doc="how-it-works">Under the hood</a></div>
+    <div><div class="grp">Project</div><a href="https://github.com/ayushh0110/ScreenMind" target="_blank" rel="noopener">GitHub ↗</a><a href="https://pypi.org/project/screenmind/" target="_blank" rel="noopener">PyPI ↗</a><a href="https://youtu.be/CxkkBT_EvPw?si=I3McH0k1vIhVxyMz" target="_blank" rel="noopener">Walkthrough ↗</a><a href="https://github.com/ayushh0110/ScreenMind/issues/new" target="_blank" rel="noopener">Raise an issue ↗</a></div>
+    <div><div class="grp">Connect</div><a href="https://x.com/ayushh_ss" target="_blank" rel="noopener">X ↗</a><a href="https://www.linkedin.com/in/ayushhss/" target="_blank" rel="noopener">LinkedIn ↗</a><a href="mailto:shekharayush5678@gmail.com">Email</a></div>
+  </div><div class="copy">ScreenMind — 100% local, MIT-licensed. Built with Gemma 4 E2B.</div></footer>
+<script src="/content.js"></script>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
