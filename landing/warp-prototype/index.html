@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ScreenMind — Neuron Fly-Through Prototype</title>
+<style>
+  :root { --bg:#05060d; --violet:#8b5cf6; --fg:#e6e6f2; --dim:#9aa; }
+  * { margin:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--fg); font-family:'Inter',system-ui,'Segoe UI',sans-serif; overflow:hidden; height:100vh; }
+  canvas { position:fixed; inset:0; z-index:0; }
+
+  .nav { position:fixed; top:16px; left:18px; z-index:30; font-size:12px; color:var(--dim); text-decoration:none;
+         background:rgba(20,20,40,.5); padding:7px 12px; border:1px solid #23233d; border-radius:9px; backdrop-filter:blur(8px); }
+  .nav:hover { color:var(--fg); }
+
+  #flash { position:fixed; inset:0; z-index:20; pointer-events:none; opacity:0;
+           background:radial-gradient(circle at 50% 50%, #ffffff 0%, #b79bff 30%, rgba(139,92,246,0) 70%); }
+
+  .layer { position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center;
+           text-align:center; padding:6vw; transition:opacity .2s linear; }
+
+  .lumin { color:rgba(236,236,255,.42); -webkit-text-stroke:1px rgba(206,196,255,.92); font-weight:800; letter-spacing:-.02em;
+           text-shadow:0 0 22px rgba(139,92,246,.85), 0 0 48px rgba(139,92,246,.45); }
+
+  #brain h1 { font-size:clamp(40px,7vw,84px); line-height:1.02; }
+  #brain .sub { margin:18px auto 0; color:#cfcfe8; font-size:19px; max-width:440px; text-shadow:0 1px 10px #000; }
+  .portals { display:flex; gap:16px; justify-content:center; margin-top:34px; flex-wrap:wrap; }
+  .portal { pointer-events:auto; cursor:pointer; font-size:15px; font-weight:600; color:#d9d0ff;
+            padding:14px 22px; border-radius:14px; border:1px solid rgba(139,92,246,.5);
+            background:rgba(139,92,246,.08); backdrop-filter:blur(6px); transition:.2s; }
+  .portal:hover { border-color:var(--violet); background:rgba(139,92,246,.2); box-shadow:0 0 30px -6px rgba(139,92,246,.7); transform:translateY(-2px); }
+  .tiny { margin-top:26px; font-size:12.5px; letter-spacing:.08em; color:var(--dim); }
+
+  #doc { align-items:flex-start; justify-content:center; overflow:auto; }
+  .article { max-width:720px; width:100%; margin-top:14vh; text-align:left; }
+  .article .tag { color:#c9b8ff; font-weight:700; font-size:13px; letter-spacing:.16em; text-transform:uppercase;
+                  text-shadow:0 0 14px rgba(139,92,246,.9); }
+  .article h1 { font-size:clamp(32px,5vw,52px); line-height:1.05; margin-top:12px; }
+  .article p { color:#c7c7e0; font-size:17px; line-height:1.7; margin-top:18px; text-shadow:0 1px 6px #000; }
+  .code { margin-top:22px; font-family:monospace; font-size:14px; color:#e9e0ff; background:rgba(20,18,40,.6);
+          border:1px solid rgba(139,92,246,.3); border-radius:12px; padding:14px 18px; box-shadow:0 0 30px -12px rgba(139,92,246,.6); }
+  .jump { display:inline-block; margin-top:26px; pointer-events:auto; cursor:pointer; color:var(--violet); font-weight:600; font-size:15px; }
+  .jump:hover { text-shadow:0 0 16px rgba(139,92,246,.9); }
+  .back { position:fixed; top:16px; right:18px; z-index:12; pointer-events:auto; cursor:pointer; font-size:13px; color:#d9d0ff;
+          background:rgba(20,20,40,.5); padding:8px 14px; border:1px solid rgba(139,92,246,.4); border-radius:10px; backdrop-filter:blur(8px); }
+  .back:hover { border-color:var(--violet); }
+
+  #strand { position:fixed; left:0; top:0; width:2px; height:100%; z-index:11; background:linear-gradient(var(--violet), transparent); opacity:0; box-shadow:0 0 10px var(--violet); }
+
+  #panel { position:fixed; left:16px; bottom:16px; z-index:30; width:236px; background:rgba(10,10,22,.72);
+           border:1px solid #23233d; border-radius:14px; padding:14px 16px; backdrop-filter:blur(10px); font-size:12px; color:#c7c7e0; }
+  #panel h3 { font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--violet); margin-bottom:10px; }
+  #panel label { display:block; margin:11px 0 3px; }
+  #panel input[type=range] { width:100%; accent-color:var(--violet); }
+  #panel .row { display:flex; justify-content:space-between; }
+  #panel .chk { display:flex; align-items:center; gap:7px; margin-top:12px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+  <a class="nav" href="../index.html">← Concepts</a>
+  <div id="flash"></div>
+  <div id="strand"></div>
+
+  <div class="layer" id="brain">
+    <div>
+      <h1 class="lumin">Your screen,<br>remembered.</h1>
+      <div class="sub">Every moment, woven into one memory — on your machine.</div>
+      <div class="portals">
+        <div class="portal" data-doc="install">→ Install guide</div>
+        <div class="portal" data-doc="agents">→ Build an agent</div>
+      </div>
+      <div class="tiny">click a link to fly through the neurons ↯</div>
+    </div>
+  </div>
+
+  <div class="layer" id="doc" style="opacity:0">
+    <div class="back" id="backLink">← Back to the brain</div>
+    <div class="article" id="article"></div>
+  </div>
+
+  <div id="panel">
+    <h3>↯ warp tuning</h3>
+    <label>Duration <span class="row"><span></span><b id="vDur">850</b> ms</span></label>
+    <input id="sDur" type="range" min="400" max="1600" value="850" step="20" />
+    <label>Fly speed <span class="row"><span></span><b id="vSpd">150</b></span></label>
+    <input id="sSpd" type="range" min="50" max="300" value="150" step="5" />
+    <label>Streak length <span class="row"><span></span><b id="vLen">0.18</b></span></label>
+    <input id="sLen" type="range" min="0.04" max="0.4" value="0.18" step="0.01" />
+    <div class="chk"><input id="reduced" type="checkbox" /><label for="reduced" style="margin:0">reduced motion (fade only)</label></div>
+  </div>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x05060d, 0.05);   // depth cue — key to the brain-demo look
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 200);
+const cc = new THREE.Color();
+
+// ── Reusable brain-neuron builder (SAME look as the earlier brain demo:
+//    ellipsoid shell + central fissure + surface noise + violet palette + synapses).
+//    Scaled large & centered on the origin so the camera sits INSIDE it. ──
+function buildNeurons(count, scale, pointSize, links) {
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
+    const r = 0.82 + Math.random() * 0.18;                    // shell
+    let x = Math.sin(ph) * Math.cos(th) * 2.5 * scale * r;
+    let y = Math.cos(ph) * 1.75 * scale * r;
+    let z = Math.sin(ph) * Math.sin(th) * 2.05 * scale * r;
+    x += x > 0 ? 0.28 * scale : -0.28 * scale;                // central fissure
+    x += (Math.random() - .5) * .28 * scale;                  // surface noise
+    y += (Math.random() - .5) * .28 * scale;
+    z += (Math.random() - .5) * .28 * scale;
+    pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+    cc.setHSL(0.72 - Math.random() * 0.14, 0.78, 0.52 + Math.random() * 0.15);
+    col[i*3]=cc.r; col[i*3+1]=cc.g; col[i*3+2]=cc.b;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mat = new THREE.PointsMaterial({ size: pointSize, vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+  const points = new THREE.Points(geo, mat); points.frustumCulled = false; scene.add(points);
+  // synapses between nearest of random samples
+  const seg = [];
+  for (let i = 0; i < links; i++) {
+    const a = (Math.random() * count) | 0;
+    let best = -1, bd = 1e9;
+    for (let k = 0; k < 6; k++) {
+      const b = (Math.random() * count) | 0; if (b === a) continue;
+      const dx=pos[a*3]-pos[b*3], dy=pos[a*3+1]-pos[b*3+1], dz=pos[a*3+2]-pos[b*3+2];
+      const d = dx*dx+dy*dy+dz*dz; if (d < bd) { bd = d; best = b; }
+    }
+    if (best >= 0) seg.push(pos[a*3],pos[a*3+1],pos[a*3+2], pos[best*3],pos[best*3+1],pos[best*3+2]);
+  }
+  const lgeo = new THREE.BufferGeometry();
+  lgeo.setAttribute('position', new THREE.Float32BufferAttribute(seg, 3));
+  const lines = new THREE.LineSegments(lgeo, new THREE.LineBasicMaterial({ color: 0x8b5cf6, transparent: true, opacity: 0, blending: THREE.AdditiveBlending }));
+  points.add(lines);
+  return { points, mat, lines };
+}
+
+const brain  = buildNeurons(4600, 1.0, 0.055, 260); // dense — identical to the earlier brain demo
+const corner = buildNeurons(1050, 1.0, 0.06,  80);  // sparse — same brain, thinned (the arrival corner)
+
+// ── Travel field: the SAME neurons, streaming past the camera. Rendered as
+//    head→tail line segments; tail length grows with speed → dots when slow,
+//    long streaks at peak (= hyperspace, but they're neurons). ──
+const WN = 1700, DISK = 13, ZBACK = -70, ZFRONT = 8, RANGE = 78;
+const sx = new Float32Array(WN), sy = new Float32Array(WN), sz = new Float32Array(WN);
+const lpos = new Float32Array(WN * 2 * 3);
+const lcol = new Float32Array(WN * 2 * 3);
+for (let i = 0; i < WN; i++) {
+  const ang = Math.random() * Math.PI * 2, rad = Math.sqrt(Math.random()) * DISK;
+  sx[i] = Math.cos(ang) * rad; sy[i] = Math.sin(ang) * rad;
+  sz[i] = ZBACK + Math.random() * (ZFRONT - ZBACK);
+  cc.setHSL(0.70, 0.85, 0.85); lcol[i*6]=cc.r; lcol[i*6+1]=cc.g; lcol[i*6+2]=cc.b;   // bright head
+  cc.setHSL(0.73, 0.85, 0.5);  lcol[i*6+3]=cc.r; lcol[i*6+4]=cc.g; lcol[i*6+5]=cc.b;  // violet tail
+}
+const wgeo = new THREE.BufferGeometry();
+wgeo.setAttribute('position', new THREE.BufferAttribute(lpos, 3));
+wgeo.setAttribute('color', new THREE.BufferAttribute(lcol, 3));
+const wmat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+const warp = new THREE.LineSegments(wgeo, wmat); warp.frustumCulled = false; scene.add(warp);
+
+// ── Post-processing ──
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.1, 0.7, 0.1);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// ── Doc content ──
+const DOCS = {
+  install: { tag:'Getting Started', title:'Install ScreenMind',
+    body:['One command. It auto-detects your GPU, downloads the model, and opens the dashboard at 127.0.0.1:7777.',
+          'On first run it prompts for the AI packages and the Gemma 4 model — then Chat and Summary auto-unlock.'],
+    code:'pip install screenmind' },
+  agents: { tag:'Agent Platform', title:'Build your own agent',
+    body:['Drop a Markdown file in ~/.screenmind/agents/ and it runs on a schedule — no code needed.',
+          'Declare the screen data it needs in the frontmatter; Gemma processes it locally and writes the result.'],
+    code:'schedule: every 6h\ndata: timeline, apps, mood' }
+};
+const article = document.getElementById('article');
+function setDoc(key) {
+  const d = DOCS[key] || DOCS.install;
+  article.innerHTML =
+    `<div class="tag">${d.tag}</div><h1 class="lumin">${d.title}</h1>` +
+    d.body.map(p => `<p>${p}</p>`).join('') +
+    `<div class="code">${d.code.replace(/\n/g,'<br>')}</div>` +
+    `<div class="jump" id="jumpOther">↯ jump to “${key==='install'?'Build an agent':'Install guide'}”</div>`;
+  document.getElementById('jumpOther').onclick = () => go('doc', key === 'install' ? 'agents' : 'install');
+}
+
+// ── Transition state ──
+const brainEl = document.getElementById('brain');
+const docEl = document.getElementById('doc');
+const flashEl = document.getElementById('flash');
+const strandEl = document.getElementById('strand');
+let pageState = 'brain';
+let transitioning = false, tStart = 0, toPage = 'brain', pendingKey = 'install', swapped = false, micro = false;
+let DUR = 850, PEAK = 150, LENF = 0.18, reduced = false;
+
+const CORNER = {
+  install: { start: [ 1, -1], end: [-1,  1] },
+  agents:  { start: [-1, -1], end: [ 1,  1] },
+  brain:   { start: [ 0,  0], end: [ 0,  0] },
+};
+let curCorner = CORNER.brain, restLean = [0, 0];
+
+function go(target, docKey) {
+  if (transitioning) return;
+  micro = (target === 'doc' && pageState === 'doc');
+  if (target === pageState && !micro) return;
+  transitioning = true; tStart = performance.now(); toPage = target; pendingKey = docKey; swapped = false;
+  const key = target === 'brain' ? 'brain' : docKey;
+  curCorner = CORNER[key] || CORNER.brain;
+  restLean = target === 'brain' ? [0, 0] : [curCorner.end[0] * 0.3, curCorner.end[1] * 0.3];
+}
+document.querySelectorAll('.portal').forEach(p => p.onclick = () => go('doc', p.dataset.doc));
+document.getElementById('backLink').onclick = () => go('brain');
+
+const bind = (id, valId, fn) => {
+  const el = document.getElementById(id), v = document.getElementById(valId);
+  el.oninput = () => { fn(parseFloat(el.value)); v.textContent = el.value; };
+};
+bind('sDur','vDur', x => DUR = x);
+bind('sSpd','vSpd', x => PEAK = x);
+bind('sLen','vLen', x => LENF = x);
+document.getElementById('reduced').onchange = e => reduced = e.target.checked;
+
+const smooth = t => t * t * (3 - 2 * t);
+const lerp = (a, b, t) => a + (b - a) * t;
+let last = performance.now();
+const camLean = { x: 0, y: 0 };
+const tmp = new THREE.Vector3();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  const dt = Math.min((now - last) / 1000, 0.05); last = now;
+
+  let w = 0, ov = 0;
+  const total = micro ? DUR * 0.5 : (reduced ? 300 : DUR);
+  const A = total * 0.45, D = total * 0.55;
+  if (transitioning) {
+    const el = now - tStart; ov = Math.min(el / total, 1);
+    if (el < A) w = smooth(el / A);
+    else if (el < A + D) {
+      if (!swapped) { pageState = toPage; if (pageState === 'doc') setDoc(pendingKey); swapped = true; }
+      w = smooth(1 - (el - A) / D);
+    } else { w = 0; transitioning = false; }
+  }
+  const vW = reduced ? 0 : w;
+
+  // overlays
+  brainEl.style.opacity = pageState === 'brain' ? (1 - w) : 0;
+  docEl.style.opacity   = pageState === 'doc'   ? (1 - w) : 0;
+  brainEl.style.pointerEvents = (!transitioning && pageState === 'brain') ? 'auto' : 'none';
+  docEl.style.pointerEvents   = (!transitioning && pageState === 'doc')   ? 'auto' : 'none';
+  strandEl.style.opacity = pageState === 'doc' ? 0.5 * (1 - w) : 0;
+  flashEl.style.opacity = Math.pow(Math.max(0, (vW - 0.55) / 0.45), 2) * 0.9;
+
+  // dense departure brain (with synapses) — fades out as we accelerate
+  brain.mat.opacity = (pageState === 'brain' ? 0.95 : 0) * (1 - w);
+  brain.points.visible = brain.mat.opacity > 0.01;
+  brain.lines.material.opacity = brain.mat.opacity * 0.22;
+  brain.points.rotation.y += dt * 0.05;
+
+  // sparse arrival corner (same look, thinner) — fades in on arrival
+  corner.mat.opacity = (pageState === 'doc' ? 0.92 : 0) * (1 - w);
+  corner.points.visible = corner.mat.opacity > 0.01;
+  corner.lines.material.opacity = corner.mat.opacity * 0.25;
+  corner.points.rotation.y += dt * 0.04;
+
+  // travel: neurons streaming + stretching (dots→streaks). Only during the jump.
+  const spd = lerp(0, PEAK, vW);
+  wmat.opacity = vW;
+  const streak = Math.min(0.2 + spd * LENF, 42);
+  for (let i = 0; i < WN; i++) {
+    sz[i] += spd * dt;
+    if (sz[i] > ZFRONT) sz[i] -= RANGE;
+    const o = i * 6;
+    lpos[o]   = sx[i]; lpos[o+1] = sy[i]; lpos[o+2] = sz[i];
+    lpos[o+3] = sx[i]; lpos[o+4] = sy[i]; lpos[o+5] = sz[i] - streak;
+  }
+  wgeo.attributes.position.needsUpdate = true;
+
+  // directional banking: turn into `start`, sweep out to `end`
+  const targetLean = transitioning ? (ov < 0.5 ? curCorner.start : curCorner.end) : restLean;
+  const ease = transitioning ? 0.14 : 0.05;
+  camLean.x += (targetLean[0] - camLean.x) * ease;
+  camLean.y += (targetLean[1] - camLean.y) * ease;
+
+  const time = now * 0.001;
+  const CAMZ = 7;
+  camera.position.set(Math.sin(time * 0.12) * 0.5, 0.2, CAMZ - vW * 4.0);  // view the brain (drift) + lunge forward at speed
+  camera.up.set(0, 1, 0);
+  tmp.set(camLean.x * 3.5, camLean.y * 3.5, 0);       // look at the brain, banking toward the corner
+  camera.lookAt(tmp);
+  camera.rotateZ(-camLean.x * 0.12);                  // bank into the turn
+  camera.fov = 60 + vW * 18; camera.updateProjectionMatrix();
+  bloom.strength = 1.1 + vW * 1.3;
+  composer.render();
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

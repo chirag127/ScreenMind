@@ -1,0 +1,165 @@
+{
+  "_meta": {
+    "purpose": "Curated development context distilled from a huge (224MB) prior chat export so a fresh session can resume without re-reading everything.",
+    "generated": "2026-07-08",
+    "source_session": "b4c147e1-a412-498a-9aa4-498458918d24 (title: 'go through the whole codebase each file each line')",
+    "source_export": "C:/Users/Ayush/Downloads/kiro chat/conversation.json (224 MB, do NOT load directly)",
+    "companion_files": {
+      "_narrative.json": "1.2MB raw extract of all assistant text + thinking summaries (load in a fresh session if deeper recall needed)",
+      "_prompts.json": "All 51 user prompts in order — the fastest way to re-read the intent arc"
+    },
+    "how_this_was_made": "Streamed the 224MB JSON, extracted only human-readable text/thinking blocks (skipping base64 signatures, tool results, file dumps), then read the actual current website source to capture real state."
+  },
+
+  "project": {
+    "name": "ScreenMind",
+    "cwd": "C:/Users/Ayush/Desktop/OS contri/Screenmind",
+    "one_liner": "Privacy-first, 100% local screen-activity 'AI memory'. Captures screen -> understands with Gemma 4 E2B (via llama.cpp) -> searchable/chattable memory. Open-source alternative to Microsoft Recall.",
+    "github": "https://github.com/ayushh0110/ScreenMind",
+    "demo_video": "https://youtu.be/2agdzzO-w38",
+    "stats": { "github_stars": "~170", "pypi_downloads": "1500+", "license": "MIT", "min_vram": "4GB (GTX 1650 baseline)" },
+    "model": "Gemma 4 E2B — single model does vision + audio + reasoning. NOTE: it is 'Gemma 4 E2B' (user corrected: not Gemma 3; verified on web).",
+    "python": "3.10+ (dev machine has 3.12.3)"
+  },
+
+  "session_arc": [
+    "1. Full codebase read line-by-line to build complete mental model of the Python backend + frontend.",
+    "2. Bug-fixing pass on the backend (see 'bug_fixes_completed').",
+    "3. Pivoted to building a marketing/docs WEBSITE for the project (user has ~170 stars, wants a landing site). THIS IS THE ACTIVE WORK.",
+    "4. Side task: drafted a Reddit/community post about the project (see 'marketing_post').",
+    "5. Currently mid-website: polishing the 3D brain scroll experience."
+  ],
+
+  "bug_fixes_completed": {
+    "note": "These were already fixed and verified in the prior session. Listed so they are not 're-fixed' or regressed.",
+    "fixes": [
+      "hotkey.py — 'logger used before definition': moved logger + config import above the keyboard try/except block.",
+      "agent_runner.py — unbound screenmind_sdk NameError: use fully-qualified screenmind.screenmind_sdk._set_current_agent(...); removed a redundant duplicate import.",
+      "screenmind_sdk.py — SDK POSTed to non-existent /api/capture: changed to /api/capture/bookmark (matches MCP server).",
+      "dependencies.py — removed dead GEMMA_MODELS list and unused hashlib import.",
+      "README.md — corrected ANALYSIS_MODE docs: default is 'fast', 3 options (fast/balanced/merged).",
+      "server.py — synced version drift to 0.1.1.",
+      "analysis_worker.py — pHash cache check moved BEFORE OCR so identical frames skip OCR entirely.",
+      "summary.py — productive_hours no longer always 0.0. Introduced shared _compute_day_metrics() helper used by BOTH the summary and standup endpoints (DRY, order-independent). Key details: uses (a.get('category') or 'other').lower() to avoid None.lower() crash; counts only coding/writing/terminal/design/meeting as productive (not browsing/communication); computes hours from actual timestamps with per-gap capping min(delta, 2*capture_interval) instead of count*interval; top_repos filled from dev_context JOIN (top 5 by frequency)."
+    ]
+  },
+
+  "website": {
+    "status": "IN PROGRESS — core 3D landing + docs are functional; polishing brain visuals and interactivity.",
+    "location": "landing/ directory",
+    "active_site": "landing/site/  (this is the REAL production site being built)",
+    "structure": {
+      "landing/index.html": "Concept-chooser page linking the 3 early prototypes (throwaway).",
+      "landing/memory-strand/index.html": "Prototype concept 01 (glowing neural thread w/ glass beads). Rejected.",
+      "landing/brain/index.html": "Prototype concept 02 (point-cloud brain). CHOSEN direction. This holds the 'original' pretty brain look the user keeps referencing as the target aesthetic.",
+      "landing/pixels/index.html": "Prototype concept 03 (pixels->meaning). Rejected (felt same as brain).",
+      "landing/warp-prototype/index.html": "Standalone prototype for the hyperspace/light-speed page-transition experiment.",
+      "landing/site/index.html": "PRODUCTION site (34KB). Three.js brain scroll + docs system. THE main file.",
+      "landing/site/content.js": "Site content registry (window.SITE_CONTENT) — all docs page copy as structured blocks.",
+      "landing/site/assets/animation.mp4": "506KB demo loop video, embedded in Features page.",
+      "landing/README.md": "Concept notes + 'notes for the real build'."
+    },
+    "chosen_concept": "The Brain (concept 02). User loved scrolling INSIDE the brain through neurons. Rejected the 'Foster'-style cards as ugly; wanted luminescent border on translucent text instead (implemented as .lumin / .tag CSS with text-stroke + glow).",
+
+    "how_the_site_works": {
+      "hero": "Camera starts OUTSIDE a small dense 'hero brain' (heroGroup, HCOUNT=4600, the pretty original look). It reacts to the cursor ('part the neurons').",
+      "scroll_narrative": "body is 600vh. 4 text panels (data-a/data-b scroll ranges). Panel 1 = outside brain; panels 2-4 = INSIDE the brain flying through dense neurons. As scroll progresses, camera flies straight down -z INTO the big brain (group, COUNT=22000, fills the volume so interior is never empty), then wanders once inside.",
+      "big_brain": "group/COUNT=22000 — dense volumetric brain you fly through. enterFade (progress 0.06->0.20) crossfades hero brain out and big interior brain in.",
+      "page_transition": "Clicking a nav/doc link triggers go('doc', key): a WARP/hyperspace jump (travel streaks 'warp' LineSegments stretch like Star Wars light-speed / Interstellar wormhole) that flies to a CORNER inside the same big brain, then docs render there with dimmer/calmer neurons for readability. CORNER map defines start/end corners per page. Returning home = go('home').",
+      "docs_system": "docs render from content.js SITE_CONTENT into #article + #docnav sidebar. Block renderer supports: h, h3, p, code, list, cards, steps, callout, youtube, img, loopvideo, stats. In-doc/sidebar nav uses swapDoc() = quick fade (NO warp); home<->doc uses go() = warp.",
+      "docs_pages": ["features", "how-it-works", "install", "chat-search", "agents", "mcp", "privacy", "architecture"],
+      "palette": "bg #05060d, violet #8b5cf6, cyan #22d3ee, fg #e6e6f2",
+      "tech": "Plain HTML + Three.js 0.160.1 from CDN (importmap). EffectComposer + UnrealBloom + OutputPass. NO build step."
+    },
+
+    "design_decisions_and_user_preferences": [
+      "User wants a PLAYFUL SANDBOX feel — fun interactive elements, cursor should push/part neurons and they spring back (damped physics).",
+      "The brain the user wants is specifically the one from the 3-prototype demo (landing/brain/). User repeatedly rejected versions where it 'felt like we exited the brain' — the target is being permanently surrounded by DENSE neurons on all sides (like the frame right after entering the brain).",
+      "Scroll should feel ENDLESS / infinite — like the wormhole travel in Interstellar — NOT a finite tunnel that ends, and NOT neurons that just get bigger as if approaching a wall.",
+      "Movement should not be purely straight; ideally drift up/down/left/right like moving through space-time made of neurons.",
+      "The brain is big: 'from afar it looks small but inside it's very big' — kept large so scrolling never hits a corner/edge.",
+      "Only the 1st screen-text is OUTSIDE the brain; screens 2/3/4 are INSIDE.",
+      "Separate/doc pages should land INSIDE the brain at a corner with LESS-dim, LESS-glowing neurons for good UX/readability (not a plain text page, not a starfield).",
+      "Transition preference: at peak speed neurons stretch and automatically look like hyperspace. Reuse the SAME brain from the earlier prototype for the interior.",
+      "Content strategy: put the most content in the 'scrolling inside the brain' section. All docs + features + working of ScreenMind must be reachable. Clicking things flies to a different corner of the brain (separate 'page').",
+      "Rejected ugly 'Foster' card style; prefers luminescent translucent text.",
+      "Marketing copy: user pushed back on product-pitch title, wanted to LEAD WITH A TECHNICAL ANGLE."
+    ],
+
+    "deployment_plan": {
+      "host": "Cloudflare Pages (free) initially; plan to move to a proper custom domain later.",
+      "requirements": "Must be Google-indexable (SEO). NOTE: an open concern the user raised — the 3D single-page home may not index well; docs content should be crawlable text.",
+      "assets_user_provided": [
+        "C:/Users/Ayush/Downloads/0622(1).mp4 — 40-45s demo with AI voice (to place somewhere on site)",
+        "C:/Users/Ayush/Downloads/Animation.gif — a gif to embed",
+        "Stat to display: 'downloaded by more than 1500+ users'"
+      ]
+    },
+
+    "pending_next_tasks": [
+      "DONE (2026-07-08): Restored hero-brain cursor interactivity. Root cause: production site used a fixed-distance ray projection (addScaledVector(ray.direction, 8)) that aimed at the wrong depth, so the 'part the neurons' effect missed the brain. Fixed by reverting to the original prototype's plane-intersection targeting (ray.intersectPlane(plane, pWorld) -> heroGroup.worldToLocal) and bumping radius 1.3->1.7 and force 0.06->0.075. User confirmed it now interacts.",
+      "DONE (2026-07-08): Added 'How it compares' docs page (nav under Overview). New {table} block type in the renderer + .ctable CSS; ScreenMind column (index 1) highlighted. Table compares ScreenMind vs Screenpipe vs MS Recall (license, cost, privacy, hardware, architecture, audio, search, chat, agents, encryption, platform).",
+      "DONE (2026-07-08): Fixed the demo video 'player configuration error'. It was the YouTube iframe embed (2agdzzO-w38) failing over file://. Replaced with a LOCAL video: copied user's C:/Users/Ayush/Downloads/0622(1).mp4 (70MB) -> compressed with ffmpeg to landing/site/assets/demo.mp4 (720p H.264 +faststart, ~2MB, under Cloudflare Pages' 25MB/file limit). New {video} block type renders <video controls>. content.js features page now uses { video: 'assets/demo.mp4' } instead of { youtube }.",
+      "DONE (2026-07-08): Docs text readability — wrapped the .article in a hard translucent reading box (rgba(9,10,20,.78) + blur(16px) + violet border + shadow) so docs are easy to read over the brain. (User previously rejected solid cards for the HERO panels, but explicitly asked for a readable box on the DOCS/separate pages — consistent.)",
+      "PENDING: Add the user's Animation.gif (C:/Users/Ayush/Downloads/Animation.gif) somewhere on the site (asked earlier; not yet placed).",
+      "Ensure the initial view clearly shows the brain exterior (user noted it once started with 'no view of the brain' — should open framed on the brain like the original).",
+      "Keep verifying the scroll never 'exits' the brain and feels endless.",
+      "Finish full website content wiring (docs/features/working all present in content.js — review completeness).",
+      "Place the user's demo mp4 (0622(1).mp4) and Animation.gif somewhere on the site; surface the 1500+ downloads stat (partly done in hero .hstat and features stats).",
+      "Deploy to Cloudflare Pages; ensure SEO/indexability of docs."
+    ],
+
+    "known_gotchas": [
+      "Some browsers block ES-module importmaps over file:// — serve with 'python -m http.server' from landing/ and open http://localhost:8000.",
+      "In index.html the old separate 'tube'/'cornerGroup' fields were RETIRED (set invisible) — docs now sit inside the big brain itself. Don't reintroduce a separate tunnel field; that caused the 'feels like we exited the brain' complaints.",
+      "Performance: heavy particle counts (22000 + 16000). The prior build notes call for prefers-reduced-motion + low-power fallbacks — not yet implemented."
+    ]
+  },
+
+  "marketing_post": {
+    "context": "User drafted a community/Reddit post about ScreenMind. Wanted it human-written, technical-first (not a product pitch), framed as 'posted ~a month ago, here's what changed since'.",
+    "key_points_to_convey": [
+      "One Gemma 4 E2B via llama-server is the ONLY model; does all 3 jobs: screen vision->structured info, audio (voice memos + meeting transcription via E2B audio encoder, no Whisper), and chat/RAG over history + daily summaries.",
+      "Most effort went into OPTIMIZATION (background service on 4GB GTX 1650), not the AI part.",
+      "Chat pre-empts screen analysis: --parallel 1 single slot; sending a chat mid-analysis kills the in-flight request (closing HTTP conn frees the slot <1s), waits, answers; killed frame re-queued at front.",
+      "Perceptual-hash cache: pHash frame vs last for same app+window. Identical->reuse (no model call), small change->reuse layout quick pass, different->full pipeline. Chat apps go stale faster than editor.",
+      "'fast' mode: prefill empty <think></think> to skip reasoning tokens, OCR (easyocr) fed as text, screenshots shrunk to 768px, embeddings on MiniLM on CPU (never touch GPU), capture pauses on games/video editors.",
+      "Speed: ~12s/frame on 1650 (spills to RAM), ~3-4s on 3060 (fits in VRAM = the real jump), ~1s on 4090.",
+      "pip install screenmind; in-app model hub (no terminal); multi-model; Linux/Wayland; MCP for Claude/Cursor.",
+      "Privacy angle (user added explicitly): 100% local, zero network after model download, no telemetry, encrypted at rest, auto-redacts cards/api keys/passwords, incognito toggle, PIN lock.",
+      "Anticipate 'isn't this just Recall?' — difference: Recall/screenpipe dump raw OCR text; here the model actually READS the frame and OCR is just context."
+    ],
+    "next_side_effort_mentioned_by_user": "Working on MULTI-MONITOR support for ScreenMind (asked community for input)."
+  },
+
+  "codebase_map": {
+    "note": "Backend is stable/understood. Package root is screenmind/. Key modules:",
+    "entry": "screenmind/main.py — boots llama-server (setup_llama.py auto-download), DB, embedder, async Queue(maxsize=100), 3 workers, hotkeys, FastAPI (threaded), optional agent scheduler.",
+    "workers": {
+      "capture_worker.py": "smart ~5s poll loop, pHash dedup, privacy-zone + heavy-app auto-pause, inserts row immediately for instant timeline, extracts a11y text at capture time (correct-window fix), enqueues.",
+      "analysis_worker.py": "OCR -> Gemma -> layout -> dev-context -> embed -> store; per-app pHash 3-tier cache (check BEFORE OCR); chat pre-emption re-queue. (34KB)",
+      "audio_worker.py": "meeting detection, dual-channel record, chunked transcription, map-reduce summaries."
+    },
+    "engine": {
+      "analyzer.py": "Gemma 4 vision analysis, 3 modes (fast/balanced/merged). (40KB, biggest)",
+      "llm_client.py": "llama-server client (chat/vision/audio).",
+      "model_manager.py": "server lifecycle, model download/switch (Model Hub).",
+      "embedder.py": "MiniLM-L6-v2 embeddings on CPU.",
+      "ocr.py": "EasyOCR.",
+      "layout_analyzer.py": "spatial OCR organization into regions.",
+      "dev_context.py": "git repo/branch/diff detection.",
+      "a11y_extractor.py": "accessibility API text.",
+      "agent_runner.py": "agent scheduling & execution."
+    },
+    "storage": "database.py (SQLite WAL + FTS5 triggers + migrations), models.py (pydantic).",
+    "privacy": "encryption.py (Fernet AES + OS keyring), data_filter.py (redaction: CC Luhn, SSN, API keys, JWT, passwords).",
+    "api": "server.py (FastAPI + PIN-lock middleware), dependencies.py (shared state), routes/ (16 modules incl. summary.py), static/ (vanilla-JS dashboard).",
+    "platform_support": "windows.py (Win32+UIA), macos.py (AppKit+AXUIElement), linux.py (X11 + Wayland via grim/IPC/XDG Portal).",
+    "integrations": "obsidian.py, notion.py, webhooks.py (HMAC+retry), smart_notify.py.",
+    "capture": "screen.py (mss/Wayland facade), wayland.py, window.py, dedup.py (pHash, threshold 8 hamming), hotkey.py, voice_recorder.py.",
+    "other": "mcp_server.py (MCP for Claude/Cursor/VSCode, read-only), screenmind_sdk.py (Python plugin SDK), config.py (pydantic settings), setup_llama.py (auto-detect+install llama-server), default_agents/ (4 built-in .md agents).",
+    "tests": "tests/ — 25+ pytest modules. CI (.github/workflows/ci.yml) runs lightweight deps (requirements-test.txt, no torch)."
+  },
+
+  "cleanup_note": "Temp helper scripts (_extract.py, _analyze.py, _probe.py, _probe2.py, _prompts.py, _peek.ps1, _narrative.json, _prompts.json) were created in the project root to build this. _narrative.json and _prompts.json are worth keeping for recall; the .py/.ps1 scripts can be deleted."
+}

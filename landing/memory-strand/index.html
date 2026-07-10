@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ScreenMind — The Memory Strand</title>
+<style>
+  :root { --bg:#05060d; --violet:#8b5cf6; --fg:#e6e6f2; --dim:#9494b4; --border:#23233d; }
+  * { margin:0; box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { background:var(--bg); color:var(--fg); font-family:'Inter',system-ui,'Segoe UI',sans-serif; height:660vh; overflow-x:hidden; }
+  canvas { position:fixed; inset:0; z-index:0; }
+  .nav { position:fixed; top:18px; left:20px; z-index:10; font-size:13px; color:var(--dim); text-decoration:none; background:rgba(20,20,40,.55); padding:8px 14px; border:1px solid var(--border); border-radius:10px; backdrop-filter:blur(8px); }
+  .nav:hover { color:var(--fg); }
+  .brand { position:fixed; top:18px; right:20px; z-index:10; font-weight:700; font-size:15px; }
+  .brand span { color:var(--violet); }
+  .stage { position:fixed; inset:0; z-index:5; pointer-events:none; }
+  .panel { position:absolute; top:50%; transform:translateY(-40%); left:0; max-width:560px; padding:0 8vw;
+           opacity:0; transition:opacity .55s ease, transform .55s ease; }
+  .panel.on { opacity:1; transform:translateY(-50%); }
+  .tag { color:var(--violet); font-weight:700; font-size:13px; letter-spacing:.16em; text-transform:uppercase; }
+  .panel h1 { font-size:clamp(38px,6.5vw,72px); font-weight:800; line-height:1.02; letter-spacing:-.025em; margin-top:14px; }
+  .panel h2 { font-size:clamp(28px,4.5vw,50px); font-weight:800; line-height:1.05; letter-spacing:-.02em; margin-top:14px; }
+  .panel p { margin-top:16px; color:var(--dim); font-size:18px; line-height:1.55; max-width:420px; }
+  .pill { display:inline-block; margin-top:24px; padding:11px 20px; border:1px solid var(--violet); border-radius:999px; color:var(--violet); font-family:monospace; font-size:14px; }
+  .hint { position:fixed; bottom:22px; left:50%; transform:translateX(-50%); z-index:10; color:var(--dim); font-size:12.5px; letter-spacing:.1em; animation:b 2.4s infinite; }
+  @keyframes b { 50% { opacity:.35; } }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+  <a class="nav" href="../index.html">← Concepts</a>
+  <div class="brand">🧠 Screen<span>Mind</span></div>
+
+  <div class="stage">
+    <div class="panel" data-a="0.00" data-b="0.16">
+      <div class="tag">Your second memory</div>
+      <h1>Your screen,<br>remembered.</h1>
+      <p>Every moment you see, woven into one searchable thread — 100% on your machine.</p>
+      <div class="pill">pip install screenmind</div>
+    </div>
+    <div class="panel" data-a="0.20" data-b="0.42">
+      <div class="tag">Capture</div>
+      <h2>Only when it<br>matters.</h2>
+      <p>Content-change detection threads each new moment onto the strand. Duplicates crumble to dust.</p>
+    </div>
+    <div class="panel" data-a="0.46" data-b="0.70">
+      <div class="tag">Understand</div>
+      <h2>Vision · Audio<br>· Reasoning.</h2>
+      <p>One local model reads every frame — apps, text, mood, layout — and remembers what it means.</p>
+    </div>
+    <div class="panel" data-a="0.74" data-b="1.01">
+      <div class="tag">Recall</div>
+      <h2>Ask your past<br>anything.</h2>
+      <p>Chat with your memory. Search by meaning. Nothing ever leaves this machine.</p>
+    </div>
+  </div>
+
+  <div class="hint">scroll ↓ &nbsp;·&nbsp; drag your cursor through the strand</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x05060d, 0.028);
+const camera = new THREE.PerspectiveCamera(56, innerWidth / innerHeight, 0.1, 120);
+
+scene.add(new THREE.AmbientLight(0x404060, 1.4));
+const p1 = new THREE.PointLight(0x8b5cf6, 70, 60); p1.position.set(5, 4, 7); scene.add(p1);
+const p2 = new THREE.PointLight(0x22d3ee, 35, 60); p2.position.set(-6, -3, 5); scene.add(p2);
+
+// ── The strand: a gentle helix descending ──
+const H = 28;
+const cpts = [];
+for (let i = 0; i <= 140; i++) {
+  const u = i / 140;
+  cpts.push(new THREE.Vector3(
+    Math.sin(u * Math.PI * 6.5) * 1.7,
+    H / 2 - u * H,
+    Math.cos(u * Math.PI * 6.5) * 0.7
+  ));
+}
+const curve = new THREE.CatmullRomCurve3(cpts);
+scene.add(new THREE.Mesh(
+  new THREE.TubeGeometry(curve, 500, 0.045, 8, false),
+  new THREE.MeshBasicMaterial({ color: 0x9b7cf6 })
+));
+scene.add(new THREE.Mesh(
+  new THREE.TubeGeometry(curve, 300, 0.20, 8, false),
+  new THREE.MeshBasicMaterial({ color: 0x8b5cf6, transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending })
+));
+
+// ── Beads: captured screen-moments ──
+const beads = [];
+const bgeo = new THREE.BoxGeometry(0.62, 0.42, 0.05);
+const N = 48;
+for (let i = 0; i < N; i++) {
+  const t = i / (N - 1);
+  const pos = curve.getPointAt(t);
+  const col = new THREE.Color().setHSL(0.72 - t * 0.16, 0.72, 0.6);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x141428, emissive: col, emissiveIntensity: 0.55,
+    metalness: 0.45, roughness: 0.32, transparent: true, opacity: 0.94
+  });
+  const m = new THREE.Mesh(bgeo, mat);
+  m.position.copy(pos);
+  m.userData = { home: pos.clone(), vel: new THREE.Vector3(), t, spin: (Math.random() - 0.5) * 0.5 };
+  scene.add(m);
+  beads.push(m);
+}
+
+// ── Post-processing ──
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.95, 0.65, 0.18));
+composer.addPass(new OutputPass());
+
+// ── Pointer → world point on z=0 plane ──
+const ray = new THREE.Raycaster();
+const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+const mouse = new THREE.Vector2(-10, -10);
+const pointer3 = new THREE.Vector3(999, 999, 0);
+addEventListener('pointermove', e => {
+  mouse.x = (e.clientX / innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / innerHeight) * 2 + 1;
+});
+
+// ── Scroll progress + panels ──
+let progress = 0;
+const panels = [...document.querySelectorAll('.panel')];
+function refresh() {
+  const max = document.body.scrollHeight - innerHeight;
+  progress = max > 0 ? Math.min(Math.max(scrollY / max, 0), 1) : 0;
+  for (const pl of panels) {
+    const on = progress >= +pl.dataset.a && progress <= +pl.dataset.b;
+    pl.classList.toggle('on', on);
+  }
+}
+addEventListener('scroll', refresh, { passive: true });
+refresh();
+
+const tmp = new THREE.Vector3();
+function animate() {
+  requestAnimationFrame(animate);
+  const t = progress;
+  const cp = curve.getPointAt(t * 0.9 + 0.02);
+  camera.position.lerp(tmp.set(cp.x * 0.45, cp.y, cp.z + 7.2), 0.07);
+  const look = curve.getPointAt(Math.min(t * 0.9 + 0.09, 1));
+  camera.lookAt(look.x * 0.3, look.y, look.z);
+
+  ray.setFromCamera(mouse, camera);
+  if (!ray.ray.intersectPlane(plane, pointer3)) pointer3.set(999, 999, 0);
+
+  const time = performance.now() * 0.001;
+  for (const m of beads) {
+    const d = m.userData;
+    tmp.subVectors(m.position, pointer3); tmp.z = 0;
+    const dist = tmp.length();
+    if (dist < 2.4) { tmp.normalize().multiplyScalar((2.4 - dist) * 0.07); d.vel.add(tmp); }
+    tmp.subVectors(d.home, m.position).multiplyScalar(0.028); d.vel.add(tmp);
+    d.vel.multiplyScalar(0.86);
+    m.position.add(d.vel);
+    m.rotation.y = time * d.spin + d.t * 6;
+    m.rotation.z = Math.sin(time * 0.6 + d.t * 10) * 0.12;
+  }
+  composer.render();
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

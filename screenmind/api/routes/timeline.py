@@ -70,7 +70,7 @@ async def reanalyze_activity(activity_id: int):
     """Re-run Gemma analysis + layout detection on a single activity."""
     conn = db._get_conn()
     row = conn.execute(
-        "SELECT screenshot_path, ocr_text, ocr_boxes FROM activities WHERE id = ?",
+        "SELECT screenshot_path, ocr_text, ocr_boxes, detected_app_name, window_title FROM activities WHERE id = ?",
         (activity_id,),
     ).fetchone()
     if not row:
@@ -91,6 +91,13 @@ async def reanalyze_activity(activity_id: int):
 
         # Re-run Gemma analysis (respects analysis_mode setting)
         ocr_text = row[1] or ""
+        app_name = row[3] or None
+        window_title = row[4] or None
+
+        # Extract URLs from OCR text (same as analysis_worker)
+        from screenmind.workers.analysis_worker import _extract_all_urls
+        active_urls = _extract_all_urls(ocr_text) if ocr_text else []
+
         analyzer = GemmaAnalyzer()
         try:
             _MODE_MAP = {
@@ -102,7 +109,13 @@ async def reanalyze_activity(activity_id: int):
             record, layout_regions = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: analyze_fn(img, ocr_text=ocr_text),
+                    lambda: analyze_fn(
+                        image=img,
+                        window_title=window_title,
+                        app_name_hint=app_name,
+                        ocr_text=ocr_text,
+                        active_urls=active_urls,
+                    ),
                 ),
                 timeout=300,
             )

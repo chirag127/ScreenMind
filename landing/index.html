@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ScreenMind — Website Concepts</title>
+<style>
+  :root { --bg:#05060d; --card:#11111f; --violet:#8b5cf6; --cyan:#22d3ee; --fg:#e6e6f2; --dim:#8a8aa8; --border:#23233d; }
+  * { margin:0; box-sizing:border-box; }
+  html,body { background:var(--bg); color:var(--fg); font-family:'Inter',system-ui,'Segoe UI',sans-serif; min-height:100vh; }
+  body {
+    display:flex; flex-direction:column; align-items:center; padding:8vh 6vw;
+    background:
+      radial-gradient(700px 500px at 20% 0%, rgba(139,92,246,.16), transparent 60%),
+      radial-gradient(600px 500px at 90% 30%, rgba(34,211,238,.10), transparent 60%),
+      var(--bg);
+  }
+  .brand { font-size:15px; letter-spacing:.02em; font-weight:700; color:var(--dim); }
+  .brand span { color:var(--violet); }
+  h1 { font-size:clamp(30px,5vw,52px); font-weight:800; letter-spacing:-.02em; margin:14px 0 8px; text-align:center; }
+  .sub { color:var(--dim); font-size:17px; max-width:560px; text-align:center; line-height:1.5; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:22px; margin-top:48px; width:100%; max-width:1040px; }
+  .card {
+    position:relative; display:flex; flex-direction:column; text-decoration:none; color:inherit;
+    background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
+    border:1px solid var(--border); border-radius:18px; padding:26px; overflow:hidden;
+    transition:transform .25s ease, border-color .25s ease, box-shadow .25s ease;
+    backdrop-filter:blur(6px);
+  }
+  .card:hover { transform:translateY(-6px); border-color:var(--violet); box-shadow:0 20px 60px -20px rgba(139,92,246,.5); }
+  .num { font-family:monospace; font-size:13px; color:var(--violet); letter-spacing:.15em; }
+  .card h2 { font-size:23px; margin:12px 0 8px; font-weight:700; }
+  .card p { color:var(--dim); font-size:14.5px; line-height:1.55; flex:1; }
+  .viz { height:120px; border-radius:12px; margin-bottom:18px; border:1px solid var(--border); position:relative; overflow:hidden; }
+  .v1 { background:radial-gradient(120px 120px at 50% 120%, rgba(139,92,246,.5), transparent 60%); }
+  .v1::after { content:""; position:absolute; left:50%; top:-10%; width:2px; height:140%; background:linear-gradient(var(--violet),transparent); box-shadow:0 0 14px var(--violet); transform:translateX(-50%) rotate(6deg); }
+  .v2 { background:radial-gradient(140px 90px at 50% 50%, rgba(139,92,246,.4), transparent 70%); }
+  .v2::after { content:"🧠"; position:absolute; inset:0; display:grid; place-items:center; font-size:44px; filter:drop-shadow(0 0 16px rgba(139,92,246,.8)); }
+  .v3 { background:
+      repeating-linear-gradient(90deg, rgba(139,92,246,.35) 0 3px, transparent 3px 9px),
+      repeating-linear-gradient(0deg, rgba(34,211,238,.18) 0 3px, transparent 3px 9px), #0a0a16; }
+  .go { margin-top:18px; font-size:14px; font-weight:600; color:var(--violet); }
+  .foot { margin-top:54px; color:var(--dim); font-size:13px; text-align:center; line-height:1.7; }
+  code { background:#1a1a2e; border:1px solid var(--border); padding:2px 7px; border-radius:6px; font-size:12.5px; color:var(--fg); }
+</style>
+</head>
+<body>
+  <div class="brand">🧠 Screen<span>Mind</span> · website concepts</div>
+  <h1>Pick a direction.</h1>
+  <p class="sub">Three interactive MVP takes on the same idea — a physics-driven scroll story. Open each, scroll, and drag your cursor through the scene. Then tell me which one to build for real.</p>
+
+  <div class="grid">
+    <a class="card" href="memory-strand/index.html">
+      <div class="viz v1"></div>
+      <div class="num">CONCEPT 01</div>
+      <h2>The Memory Strand</h2>
+      <p>A glowing neural thread runs down the page. Captured screen-moments thread onto it like glass beads. Scroll flies you along it; your cursor pushes the beads and they spring back.</p>
+      <div class="go">Enter concept →</div>
+    </a>
+    <a class="card" href="brain/index.html">
+      <div class="viz v2"></div>
+      <div class="num">CONCEPT 02</div>
+      <h2>The Brain</h2>
+      <p>A living point-cloud brain of thousands of memories. Scroll flies you inside it through pulsing synapses. Move your cursor and the neurons ripple away, then settle.</p>
+      <div class="go">Enter concept →</div>
+    </a>
+    <a class="card" href="pixels/index.html">
+      <div class="viz v3"></div>
+      <div class="num">CONCEPT 03</div>
+      <h2>Pixels → Meaning</h2>
+      <p>A storm of raw pixels. As you scroll they self-assemble into meaning. Shove them with your cursor and watch them re-form. The rawest, most "AI" feeling of the three.</p>
+      <div class="go">Enter concept →</div>
+    </a>
+  </div>
+
+  <div class="foot">
+    MVP concept demos — vibe &amp; interaction only, not final content.<br>
+    Best viewed in Chrome/Edge on a desktop. If a demo is blank, serve the folder:
+    <code>cd landing &amp;&amp; python -m http.server</code> then open <code>http://localhost:8000</code>.
+  </div>
+</body>
+</html>
