@@ -671,7 +671,20 @@ class AnalysisWorker:
             logger.info(f"Backfilling #{activity_id} ({app_name})...")
 
             # Load image and create a minimal CaptureResult
-            img = Image.open(ss_path)
+            try:
+                from screenmind.privacy.encryption import open_image
+                img = open_image(ss_path)
+                img.load()  # Force full decode — catches truncated files
+            except Exception as img_err:
+                # Corrupt/truncated screenshot — mark as permanently failed
+                logger.warning(f"Backfill #{activity_id}: corrupt image, skipping permanently ({img_err})")
+                conn.execute(
+                    "UPDATE activities SET analyzed = 1, summary = 'Skipped (corrupt screenshot)' WHERE id = ?",
+                    (activity_id,),
+                )
+                conn.commit()
+                return
+
             import imagehash
             phash = imagehash.phash(img)
 

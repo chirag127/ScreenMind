@@ -384,7 +384,8 @@ class GemmaAnalyzer:
     def analyze_from_path(self, image_path: Path, **kwargs):
         """Convenience method to analyze from a file path.
         Returns (ActivityRecord, list of layout regions)."""
-        image = Image.open(image_path)
+        from screenmind.privacy.encryption import open_image
+        image = open_image(image_path)
         return self.analyze_screenshot(image, **kwargs)
 
     def analyze_screenshot_balanced(

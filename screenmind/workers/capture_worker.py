@@ -288,14 +288,26 @@ class CaptureWorker:
         logger.info(f"[*] Bookmarked capture #{self._capture_count}")
 
     def pause(self, source: str = "unknown"):
-        """Pause capture (e.g., for privacy)."""
+        """Pause capture (e.g., for privacy). Persists state to settings.json."""
+        if self._paused:
+            return  # Already paused — skip redundant persist + log
         self._paused = True
         self._dedup.reset()
+        try:
+            settings.save_runtime_overrides({"capture_paused": True})
+        except Exception:
+            pass  # Never fail capture operations due to settings persistence
         logger.info(f"Paused. (source: {source})")
 
     def resume(self, source: str = "unknown"):
-        """Resume capture."""
+        """Resume capture. Persists state to settings.json."""
+        if not self._paused:
+            return  # Already running — skip redundant persist + log
         self._paused = False
+        try:
+            settings.save_runtime_overrides({"capture_paused": False})
+        except Exception:
+            pass  # Never fail capture operations due to settings persistence
         logger.info(f"Resumed. (source: {source})")
 
     def stop(self):

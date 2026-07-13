@@ -1,8 +1,11 @@
 async function renderSettings(el) {
   el.innerHTML = '<div class="spinner"></div>';
-  let cfg;
+  let cfg, startupStatus;
   try {
-    cfg = await api('/api/settings');
+    [cfg, startupStatus] = await Promise.all([
+      api('/api/settings'),
+      api('/api/startup/status').catch(() => ({ installed: false }))
+    ]);
   } catch {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Cannot load settings</div></div>';
     return;
@@ -50,6 +53,10 @@ async function renderSettings(el) {
 
   + '<div class="settings-card"><div class="settings-card-header"><div><div class="settings-title">Capture Active Monitor <span style="background:var(--accent-primary);color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:6px;vertical-align:middle">Beta</span></div><div class="settings-desc">Captures the screen with your active window instead of primary monitor. Recommended for multi-monitor setups. Works on Windows, Linux X11, and macOS.</div></div>'
   + _sw('capture-active-monitor', cfg.capture_active_monitor) + '</div></div>'
+
+  + '<div class="settings-card"><div class="settings-card-header"><div><div class="settings-title">Start at System Startup</div><div class="settings-desc">Automatically launch ScreenMind in background when you log in</div></div>'
+  + _sw('startup-toggle', startupStatus.installed) + '</div>'
+  + '<div class="settings-note" id="startup-status"></div></div>'
 
   // ── AI & MODELS ──
   + _sec('&#129504;', 'AI &amp; Models')
@@ -211,6 +218,27 @@ async function renderSettings(el) {
   if (ctxSlider) {
     ctxSlider.addEventListener('input', function() {
       document.getElementById('ctx-value').textContent = ctxSlider.value;
+    });
+  }
+
+  // Startup toggle (uses separate API, not saveSettings)
+  var startupToggle = document.getElementById('startup-toggle');
+  if (startupToggle) {
+    startupToggle.addEventListener('change', async function() {
+      var statusEl = document.getElementById('startup-status');
+      try {
+        var endpoint = startupToggle.checked ? '/api/startup/install' : '/api/startup/uninstall';
+        statusEl.textContent = 'Updating...';
+        statusEl.style.color = 'var(--text-muted)';
+        var res = await api(endpoint, { method: 'POST' });
+        statusEl.textContent = res.message || (res.ok ? 'Done' : 'Failed');
+        statusEl.style.color = res.ok ? '#10b981' : '#ef4444';
+        setTimeout(function() { statusEl.textContent = ''; }, 3000);
+      } catch (e) {
+        statusEl.textContent = 'Error: ' + e.message;
+        statusEl.style.color = '#ef4444';
+        startupToggle.checked = !startupToggle.checked; // revert
+      }
     });
   }
 
@@ -554,6 +582,19 @@ function _initApp() {
   pollStatus();
   _setPollInterval(15000); // adaptive: core.js switches to 5s during downloads
 }
+
+window.shutdownScreenMind = async function() {
+  if (!confirm('Stop ScreenMind?\n\nThe background process and API server will shut down.\nYou can restart it from the desktop shortcut or terminal.')) return;
+  var btn = document.getElementById('shutdown-btn');
+  btn.textContent = 'Stopping...';
+  btn.disabled = true;
+  try {
+    await api('/api/shutdown', { method: 'POST' });
+  } catch (e) {
+    // Expected — server dies before response completes
+  }
+  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:var(--text-muted);font-size:1.1rem">ScreenMind stopped.</div>';
+};
 
 // Wait for auth check before initializing app
 _checkAuth().then(function() {

@@ -37,13 +37,19 @@ def _setup_logging():
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    # Always log to stderr
-    stderr_handler = logging.StreamHandler(sys.stderr)
-    stderr_handler.setFormatter(fmt)
-    root.addHandler(stderr_handler)
+    # Always log to stderr (unless running under pythonw where stderr is None)
+    if sys.stderr is not None:
+        stderr_handler = logging.StreamHandler(sys.stderr)
+        stderr_handler.setFormatter(fmt)
+        root.addHandler(stderr_handler)
 
     # Optionally log to a rotating file
     log_file = os.environ.get("SCREENMIND_LOG_FILE")
+    # Auto-enable file logging when stderr is unavailable (pythonw.exe)
+    if not log_file and sys.stderr is None:
+        _data = os.environ.get("SCREENMIND_DATA_DIR", os.path.join(os.path.expanduser("~"), ".screenmind"))
+        os.makedirs(_data, exist_ok=True)
+        log_file = os.path.join(_data, "screenmind.log")
     if log_file:
         try:
             from logging.handlers import RotatingFileHandler
@@ -81,6 +87,7 @@ _ALLOWED_OVERRIDES = {
     "bookmark_hotkey", "pause_hotkey", "voice_hotkey",
     "capture_active_monitor",
     "setup_complete",
+    "capture_paused",
 }
 
 # Lock to prevent concurrent read-modify-write races on settings.json
@@ -109,6 +116,10 @@ class Settings(BaseSettings):
     capture_active_monitor: bool = Field(
         default=False,
         description="(Beta) Capture the monitor with the active window instead of primary",
+    )
+    capture_paused: bool = Field(
+        default=True,
+        description="Persisted capture state. True = paused (default for fresh installs), False = capturing.",
     )
 
     # ── Model ────────────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
 """Settings routes — get/update config, integration tests, webhook log."""
 
+import sys
+
 from fastapi import APIRouter, Request
 
 from screenmind.config import settings
@@ -133,3 +135,57 @@ async def get_webhook_log():
     """Return the last 20 webhook deliveries."""
     from screenmind.integrations.webhooks import get_delivery_log
     return {"deliveries": get_delivery_log()}
+
+
+@router.get("/startup/status")
+async def get_startup_status():
+    """Check if ScreenMind is registered in system startup."""
+    from screenmind.startup import is_startup_installed
+    return {"installed": is_startup_installed()}
+
+
+@router.post("/startup/install")
+async def install_startup_route():
+    """Register ScreenMind to start at system login."""
+    from screenmind.startup import install_startup
+    ok = install_startup()
+    return {"ok": ok, "message": "Registered in system startup" if ok else "Failed to register"}
+
+
+@router.post("/startup/uninstall")
+async def uninstall_startup_route():
+    """Remove ScreenMind from system startup."""
+    from screenmind.startup import uninstall_startup
+    ok = uninstall_startup()
+    return {"ok": ok, "message": "Removed from system startup" if ok else "Failed to remove"}
+
+
+@router.post("/shutdown")
+async def shutdown_server(request: Request):
+    """Gracefully shut down ScreenMind. Restricted to localhost."""
+    import asyncio
+    import os
+    import signal
+    import logging
+
+    # Security: only allow shutdown from localhost
+    client_host = request.client.host if request.client else None
+    if client_host not in ("127.0.0.1", "::1", "localhost"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Shutdown only allowed from localhost")
+
+    logger = logging.getLogger("screenmind.api")
+    logger.info("Shutdown requested via API")
+
+    async def _delayed_shutdown():
+        await asyncio.sleep(0.5)  # let the response reach the client
+        # Use SIGINT for clean shutdown — allows uvicorn to run cleanup,
+        # close DB connections, stop llama-server, flush logs, run atexit.
+        if sys.platform == "win32":
+            # Windows: SIGINT to self doesn't work reliably, use CTRL_C_EVENT
+            os.kill(os.getpid(), signal.CTRL_C_EVENT)
+        else:
+            os.kill(os.getpid(), signal.SIGINT)
+
+    asyncio.create_task(_delayed_shutdown())
+    return {"ok": True, "message": "ScreenMind is shutting down..."}

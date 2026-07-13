@@ -50,6 +50,7 @@ class TestCaptureWorker:
     def test_pause_resets_dedup(self):
         """Pausing resets the dedup hash so next capture is always fresh."""
         worker, _ = self._make_worker()
+        worker._paused = False  # Must be unpaused for pause() to run (idempotent guard)
         worker._dedup._last_hash = "something"
         worker.pause(source="test")
         assert worker._dedup._last_hash is None
